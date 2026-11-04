@@ -7,6 +7,8 @@
 | `config/client.example.yaml` | UI·로컬 정책 목표 설정 | 예 | **설계값, 웹 코드는 현재 `apps/web/src/settings.ts`의 SETTINGS 사용** |
 | `apps/web/vite.config.ts` | 웹 개발/미리보기 호스트·포트 | 예 | Vite, E2E |
 | `apps/web/build/offline-sw.ts` | 오프라인 서비스워커 생성 규칙 | 예 | 빌드 시 `dist/sw.js` 생성 |
+| `packages/protocol/fixtures/paths.json` | 폴더/파일명 규칙 기준 데이터 (TS·Rust 공통 테스트) | 예 | Vitest, cargo test |
+| `crates/core/src/lib.rs` 상단 상수 | Rust 공통 정책 값 (폴더 깊이, 길이 제한) | 예 | Rust core/BSD |
 | `package.json`, `package-lock.json` | npm 워크스페이스·의존성 고정 | 예 | `npm ci` |
 | `config/server.example.yaml` | 서버 계정 등급/스토리지 정책 | 예 | 설계값, 서버 적용 전 |
 | `config/cloud.example.yaml` | 개인 클라우드/공통 클라우드 전략 | 예 | 설계값, 동기화 전 |

@@ -14,6 +14,7 @@
   - IndexedDB 이름/버전/레코드 형식은 v0.1과 동일해야 함 (e2e 호환 테스트가 검사)
 - 그 외: Rust 워크스페이스 (`crates/core` 공통 도메인, `crates/server` API, `apps/bsd` TUI)
 - 계약: `packages/protocol` (OpenAPI/JSON Schema가 단일 원본)
+- 경로/파일명 규칙: `packages/protocol/fixtures/paths.json`을 먼저 고치고 TS(`apps/web/src/domain/paths.ts`)와 Rust(`crates/core/src/paths.rs`)를 함께 맞출 것
 
 ## 꼭 지킬 것
 - 요구 #28 동시 편집 잠금, CRDT 자동 병합은 **승인 전 구현 금지** (`docs/07_LOCK_APPROVAL.md`).

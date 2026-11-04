@@ -1,5 +1,5 @@
 [package]
-# FreeBSD/aarch64에서도 빌드하기 쉬운 표준 라이브러리 기반 최소 작성기
+# FreeBSD/aarch64 전용 장비용 콘솔 메모 앱. 규칙과 파일 저장은 memonest-core를 공유합니다.
 name = "memonest-bsd"
 version.workspace = true
 edition.workspace = true
@@ -10,4 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-# 외부 crate 없이 초기 콘솔 실험을 수행합니다. (3단계에서 crates/core 사용 예정)
+memonest-core = { path = "../../crates/core" }
+
+[dev-dependencies]
+tempfile = "3"

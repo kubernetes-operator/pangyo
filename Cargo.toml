@@ -3,7 +3,7 @@
 # Tauri 앱은 시스템 WebKit/GTK 라이브러리가 필요해 기본 빌드에서 제외하고 별도로 빌드합니다.
 [workspace]
 resolver = "2"
-members = ["apps/bsd"]
+members = ["crates/core", "apps/bsd"]
 exclude = ["apps/native/src-tauri"]
 
 [workspace.package]

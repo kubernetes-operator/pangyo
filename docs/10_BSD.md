@@ -22,4 +22,7 @@
 - 장비별 서비스 자동 실행과 복구는 boot 환경 검증 후 rc.d 스크립트 배포.
 
 ## 현재 코드
-- `apps/bsd`는 키보드 입력과 로컬 `.md` 저장의 작은 **콘솔 예제**. FreeBSD 실기기 검증 전, 프로덕션 키오스크가 아님.
+- `apps/bsd`는 줄 단위 **콘솔 편집기**. 경로 규칙과 파일 저장은 `crates/core`를 공유(웹과 같은 규칙).
+  - 명령: `:new`/`:open [폴더/]제목[.txt]`, `:mkdir`, `:list`(트리), `:show`, `:save`, `:quit`(미저장 경고)/`:quit!`, `:help`.
+  - 메모 위치: `$MEMONEST_NOTES_DIR` 또는 `$HOME/MemoNest/Notes` (v0.1 예제와 동일 → 기존 파일 그대로 열림).
+  - Linux x86_64에서만 빌드/테스트됨. **FreeBSD aarch64 빌드·실기기 검증 전**, 프로덕션 키오스크가 아님. 전체 화면 TUI(F6 전환)는 후속.

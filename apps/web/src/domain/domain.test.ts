@@ -1,4 +1,5 @@
 // === 도메인 단위 테스트: 요구 21, 23, 26, 27과 v0.1 데이터 호환 ===
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FolderError, folderAncestors, parseFolder, safeFilename } from './paths';
 import { remember, restore } from './history';
@@ -25,6 +26,31 @@ const newNote = (content = ''): Note => ({
   sessions: [],
   undo: [],
   redo: [],
+});
+
+// Rust(crates/core)와 같은 공통 기준 데이터
+interface PathFixtures {
+  maxDepth: number;
+  parseFolder: Array<{ input: string; ok?: string; error?: 'too_deep' | 'invalid' }>;
+  safeFilename: Array<{ input: string; output: string }>;
+}
+const fixtures = JSON.parse(
+  readFileSync(new URL('../../../../packages/protocol/fixtures/paths.json', import.meta.url), 'utf8'),
+) as PathFixtures;
+
+describe('공통 경로 규칙 (packages/protocol/fixtures/paths.json)', () => {
+  it.each(fixtures.parseFolder)('parseFolder($input)', (c) => {
+    if (c.error) {
+      expect(() => parseFolder(c.input, fixtures.maxDepth)).toThrow(
+        expect.objectContaining({ kind: c.error }) as unknown as Error,
+      );
+    } else {
+      expect(parseFolder(c.input, fixtures.maxDepth)).toBe(c.ok);
+    }
+  });
+  it.each(fixtures.safeFilename)('safeFilename($input)', (c) => {
+    expect(safeFilename(c.input)).toBe(c.output);
+  });
 });
 
 describe('parseFolder (요구 21, T-02)', () => {

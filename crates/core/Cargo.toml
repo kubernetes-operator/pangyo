@@ -1,0 +1,20 @@
+[package]
+# MemoNest 공통 도메인: 경로 규칙, 로컬 .md/.txt 파일 저장소 (Tauri, BSD TUI, 서버가 공유)
+name = "memonest-core"
+description = "MemoNest shared domain: path rules and local Markdown/TXT note store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = "2"
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"

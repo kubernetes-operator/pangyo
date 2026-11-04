@@ -29,3 +29,11 @@
 - 데이터: IndexedDB 레코드에 `sessions[].openMs` 필드 추가(추가형). v0.1 레코드는 0으로 보정, DB_VERSION 변경 없음. SQLite 초안은 migration 002 추가.
 - 테스트: 단위(typingIncrement 경계값, openMs 보정) + E2E T-05(작성 10초 / 열림 2분대), T-05b(숨김 10분 제외, 재개 세션), 호환 테스트 통과.
 - 위험: 열어둔 시간이 10초마다 노트 전체(Undo 스냅샷 포함)를 저장 → 큰 문서에서 쓰기량 증가. 3단계 이후 세션을 별도 저장소로 분리 검토. 실제 창 최소화는 headless에서 흉내만 냄(visibilitychange).
+
+## Unreleased — Rust 공통 코어 + BSD 전환 (ADR-0002 이전 3/4단계, `feature/03-rust-core`)
+- 변경 파일: `crates/core/**`(신규: `paths.rs` 규칙, `store.rs` 파일 저장소, `format.rs`, `error.rs`, `tests/{parity,store}.rs`), `packages/protocol/fixtures/paths.json`(신규, TS·Rust 공통 기준), `apps/web/src/domain/paths.ts`(공통 규칙으로 정렬), `apps/web/src/domain/domain.test.ts`, `apps/bsd/{Cargo.toml,src/main.rs}`(core 사용, 테스트 가능 구조), `Cargo.toml`(members), docs 04/10/13, ADR-0002, README, CLAUDE.md.
+- 규칙 변화(웹·BSD 공통): 길이를 코드 포인트 기준으로(이모지 등이 반으로 잘리던 문제 해소), DEL(U+007F) 금지, Windows 예약어·끝의 점/공백·`.` 시작 이름 처리, U+0085/U+FEFF 공백 처리 통일. **폴더는 금지 문자·예약어를 이제 거부**(이전 웹은 `:`만 거부). BSD는 금지 문자를 지우던 방식 → `_` 치환(웹과 동일), 제목 100자 → 200자.
+- BSD 동작: 폴더(최대 2단계)·`.txt` 지원, `:mkdir`/`:show`/`:help`/`:quit!` 추가, 미저장 종료 경고, 저장 실패 시 종료하지 않음, `:new`가 기존 파일을 덮어쓰지 않음, `\:` 이스케이프.
+- 테스트: `make check` 통과 — Web 단위 58개(공통 기준 42건 포함) + E2E 9개, Rust 17개(공통 기준, 저장소 7개: 원자적 덮어쓰기·깊이 제한·심볼릭 링크 차단·비 UTF-8 등, BSD 6개). BSD 바이너리 수동 실행 확인(Linux).
+- 위험: 기존 웹 데이터에 금지 문자가 든 폴더(예: `a*b`)가 있으면 그대로 표시되지만 같은 이름으로 새로 만들 수는 없음. FreeBSD aarch64 빌드는 미검증(Tier 3 타깃, 실기기 필요). Tauri 파일 어댑터 연결은 로드맵 03단계.
+- 후속: 4/4단계 서버 Go → Rust(axum) 이전.
