@@ -1,21 +1,35 @@
 # === MemoNest 개발 명령 모음: 모든 사람/CI/에이전트가 같은 진입점을 사용 ===
 # 사용법: make help
-.PHONY: help check fmt test dev-web dev-api bsd helm-lint
+.PHONY: help setup check check-fast fmt test e2e dev-web build-web dev-api bsd helm-lint
 
 help: ## 명령 목록
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
-check: ## 전체 검증 (JSON, JS, Rust fmt/clippy/test, Go, 비밀값 가드)
+setup: ## 최초 1회: npm 의존성 + E2E용 Chromium 설치
+	npm ci --no-audit --no-fund
+	npx -w apps/web playwright install chromium
+
+check: ## 전체 검증 (JSON, Web 타입/단위/빌드/E2E, Rust fmt/clippy/test, Go, 비밀값 가드)
 	./scripts/check.sh
+
+check-fast: ## E2E를 뺀 빠른 검증
+	SKIP_E2E=1 ./scripts/check.sh
 
 fmt: ## Rust 코드 자동 정렬
 	cargo fmt --all
 
-test: ## Rust 테스트만 실행
+test: ## 단위 테스트 (Web Vitest + Rust)
+	npm run -s -w apps/web test
 	cargo test --workspace
 
-dev-web: ## 웹 프로토타입 실행 (http://127.0.0.1:5173)
+e2e: ## 웹 E2E 회귀 테스트 (Playwright)
+	npm run -s -w apps/web e2e
+
+dev-web: ## 웹 개발 서버 (http://127.0.0.1:5173, 서비스워커 비활성)
 	./scripts/dev-web.sh
+
+build-web: ## 웹 빌드 → apps/web/dist (오프라인 서비스워커 포함)
+	npm run -s -w apps/web build
 
 dev-api: ## API 서버 실행 (http://127.0.0.1:8080/healthz)
 	./scripts/dev-api.sh

@@ -4,7 +4,10 @@
 |---|---|---|---|
 | `config/project.env.example` | Git/K8s/API/계정 등 모든 외부 접속 자리 | 예 | 복사한 `.env`를 스크립트가 사용 |
 | `.env` | 개인 환경 값 / 키 없는 접속 주소 | **아니요** | shell scripts |
-| `config/client.example.yaml` | UI·로컬 정책 목표 설정 | 예 | **설계값, 웹 코드는 현재 상단 SETTINGS 사용** |
+| `config/client.example.yaml` | UI·로컬 정책 목표 설정 | 예 | **설계값, 웹 코드는 현재 `apps/web/src/settings.ts`의 SETTINGS 사용** |
+| `apps/web/vite.config.ts` | 웹 개발/미리보기 호스트·포트 | 예 | Vite, E2E |
+| `apps/web/build/offline-sw.ts` | 오프라인 서비스워커 생성 규칙 | 예 | 빌드 시 `dist/sw.js` 생성 |
+| `package.json`, `package-lock.json` | npm 워크스페이스·의존성 고정 | 예 | `npm ci` |
 | `config/server.example.yaml` | 서버 계정 등급/스토리지 정책 | 예 | 설계값, 서버 적용 전 |
 | `config/cloud.example.yaml` | 개인 클라우드/공통 클라우드 전략 | 예 | 설계값, 동기화 전 |
 | `config/integrations.example.yaml` | AI/n8n 연동 프로바이더 | 예 | 설계값, 연결 전 |

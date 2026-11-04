@@ -3,13 +3,15 @@
 이 저장소의 공통 규칙은 **`AGENTS.md`** 입니다. 작업 전에 반드시 읽고 따릅니다.
 
 ## 빠른 명령
-- `make check` — 전체 검증 (커밋 전 필수)
-- `make test` / `make fmt` — Rust 테스트 / 정렬
+- `make setup` — 최초 1회 (npm 의존성 + E2E용 Chromium)
+- `make check` — 전체 검증, E2E 포함 (커밋 전 필수) / `make check-fast` — E2E 제외
+- `make test` / `make e2e` / `make fmt` — 단위 테스트 / 웹 E2E / Rust 정렬
 - `make dev-web` — 웹 프로토타입 (http://127.0.0.1:5173)
 - `make helm-lint` — Helm 차트 정적 검사 (클러스터 접속 없음)
 
 ## 기술 스택 (ADR-0002)
-- 화면: TypeScript 웹 UI (웹 PWA + Tauri 공용) — 현재는 일반 JS, 이전 2단계에서 전환
+- 화면: `apps/web` TypeScript + Vite (웹 PWA + Tauri 공용). 순수 규칙은 `src/domain/`, 저장은 `src/storage/`, DOM은 `src/ui/`
+  - IndexedDB 이름/버전/레코드 형식은 v0.1과 동일해야 함 (e2e 호환 테스트가 검사)
 - 그 외: Rust 워크스페이스 (`crates/core` 공통 도메인, `crates/server` API, `apps/bsd` TUI)
 - 계약: `packages/protocol` (OpenAPI/JSON Schema가 단일 원본)
 

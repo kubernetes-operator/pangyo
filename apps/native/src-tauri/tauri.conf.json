@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "identifier": "dev.memonest.notes",
   "build": {
-    "frontendDist": "../../web"
+    "frontendDist": "../../web/dist",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeDevCommand": "npm --prefix ../web run dev",
+    "beforeBuildCommand": "npm --prefix ../web run build"
   },
   "app": {
     "windows": [
