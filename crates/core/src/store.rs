@@ -57,6 +57,21 @@ impl NoteLocation {
         Self::new(folder, title, format)
     }
 
+    /// 인덱스에 저장된 상대 경로(`"Work/Plan.md"`)를 그대로 위치로 바꿉니다 (이름 정규화 없음, 안전성만 검사).
+    pub fn from_relative(path: &str) -> Result<Self> {
+        let invalid = || CoreError::InvalidLocation(path.to_owned());
+        let (folder, file) = path.rsplit_once('/').unwrap_or(("", path));
+        let (title, ext) = file.rsplit_once('.').ok_or_else(invalid)?;
+        let format = NoteFormat::from_extension(ext).ok_or_else(invalid)?;
+        let location = Self {
+            folder: folder.to_owned(),
+            title: title.to_owned(),
+            format,
+        };
+        location.validate()?;
+        Ok(location)
+    }
+
     pub fn file_name(&self) -> String {
         format!("{}.{}", self.title, self.format)
     }
@@ -178,6 +193,41 @@ impl FileStore {
             let _ = fs::remove_file(&temp);
         }
         Ok(result?)
+    }
+
+    /// 메모 파일을 지웁니다 (없으면 무시).
+    pub fn remove(&self, location: &NoteLocation) -> Result<()> {
+        let path = self.checked_path(location)?;
+        match fs::remove_file(&path) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            other => Ok(other?),
+        }
+    }
+
+    /// 메모 파일 이름을 바꿉니다. 대상 폴더가 없으면 만듭니다. 대상이 있으면 덮어쓰므로 호출 쪽에서 충돌을 확인하세요.
+    pub fn rename(&self, from: &NoteLocation, to: &NoteLocation) -> Result<()> {
+        let source = self.checked_path(from)?;
+        to.validate()?;
+        let dir = self.ensure_folder(&to.folder)?;
+        let target = dir.join(to.file_name());
+        reject_symlink(&target)?;
+        fs::rename(&source, &target)?;
+        sync_dir(&dir)?;
+        Ok(())
+    }
+
+    /// 파일 수정 시각
+    pub fn modified(&self, location: &NoteLocation) -> Result<std::time::SystemTime> {
+        Ok(fs::metadata(self.checked_path(location)?)?.modified()?)
+    }
+
+    /// 두 위치가 디스크에서 같은 파일인지 (대소문자를 구분하지 않는 파일시스템에서 이름 대소문자만 다른 경우 등)
+    #[cfg(feature = "workspace")]
+    pub fn same_file(&self, a: &NoteLocation, b: &NoteLocation) -> bool {
+        match (self.checked_path(a), self.checked_path(b)) {
+            (Ok(a), Ok(b)) => same_file::is_same_file(a, b).unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// 위치 검증 + 경로 각 단계가 심볼릭 링크가 아닌지 확인한 실제 경로

@@ -1,6 +1,6 @@
 // === 화면 연결: v0.1 app.js의 동작을 그대로 옮긴 것 (서버 계정/동기화는 구현하지 않음) ===
 import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
-import { localStore } from '../storage/indexeddb';
+import type { NoteRepository } from '../storage/repository';
 import { parseFolder, folderAncestors, safeFilename } from '../domain/paths';
 import { remember, restore, type HistoryKind } from '../domain/history';
 import {
@@ -15,6 +15,9 @@ import {
 import type { EditSession, FolderRecord, Note, NoteFormat } from '../domain/types';
 
 type Mode = 'split' | 'organizer' | 'editor';
+
+/** bootstrap()에서 실행 환경에 맞게 주입됩니다 (IndexedDB 또는 파일). */
+let repo: NoteRepository;
 
 // === 1. 내부 UI 상태 ===
 const state = {
@@ -53,7 +56,7 @@ function setLanguage(locale: Locale): void {
   $<HTMLInputElement>('search').placeholder = PLACEHOLDERS[locale].search;
   $<HTMLInputElement>('title').placeholder = PLACEHOLDERS[locale].title;
   editor().placeholder = PLACEHOLDERS[locale].editor;
-  localStore.setMeta('locale', locale).catch(console.error);
+  repo.setMeta('locale', locale).catch(console.error);
 }
 
 function updateConnectivity(): void {
@@ -172,7 +175,7 @@ function renderEditor(): void {
 async function persist(note: Note): Promise<void> {
   // 같은 파일의 입력 순서를 보장하도록 직렬화합니다.
   const copy = structuredClone(note);
-  state.saving = state.saving.catch(console.error).then(() => localStore.saveNote(copy));
+  state.saving = state.saving.catch(console.error).then(() => repo.saveNote(copy));
   try {
     await state.saving;
     $('save-status').textContent = 'LOCAL SAVED';
@@ -272,7 +275,7 @@ async function selectNote(id: string): Promise<void> {
   startSession();
   renderEditor();
   displayTree();
-  await localStore.setMeta('selectedId', id);
+  await repo.setMeta('selectedId', id);
   if (isSmallScreen()) changeMode('editor');
 }
 
@@ -298,7 +301,7 @@ async function addNote(title: string, content = '', format: NoteFormat = 'md'): 
     undo: [],
     redo: [],
   };
-  await localStore.saveNote(note);
+  await repo.saveNote(note);
   state.notes.push(note);
   await selectNote(note.id);
 }
@@ -308,7 +311,7 @@ async function addFolder(raw: string): Promise<void> {
   if (!path) return;
   for (const part of folderAncestors(path)) {
     if (!state.folders.some((f) => f.path === part)) {
-      await localStore.saveFolder(part);
+      await repo.saveFolder(part);
       state.folders.push({ path: part });
     }
   }
@@ -434,13 +437,15 @@ function bindEvents(): void {
   window.addEventListener('offline', updateConnectivity);
 }
 
-export async function bootstrap(): Promise<void> {
-  const locale = await localStore.getMeta<string>('locale');
-  state.notes = await localStore.notes();
-  state.folders = await localStore.folders();
-  setLanguage(locale?.value === 'en' ? 'en' : 'ko');
-  const selected = await localStore.getMeta<string>('selectedId');
-  const initial = state.notes.find((n) => n.id === selected?.value) ?? state.notes[0];
+export async function bootstrap(repository: NoteRepository): Promise<void> {
+  repo = repository;
+  $('hint').textContent = `Local-first · ${repo.describe()} · Sync / login not implemented`;
+  const locale = await repo.getMeta<string>('locale');
+  state.notes = await repo.listNotes();
+  state.folders = await repo.listFolders();
+  setLanguage(locale === 'en' ? 'en' : 'ko');
+  const selected = await repo.getMeta<string>('selectedId');
+  const initial = state.notes.find((n) => n.id === selected) ?? state.notes[0];
   if (initial) {
     state.selectedId = initial.id;
     state.note = initial;

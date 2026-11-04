@@ -20,7 +20,7 @@ Notes/
 - 로컬 파일 저장(`crates/core` `FileStore`): 같은 폴더 임시 파일 → fsync → rename(원자적 저장). 루트 안 심볼릭 링크는 따라가지 않음. 3단계 이상 깊은 폴더, 다른 확장자, 숨김 파일은 목록에서 제외.
 - 메모 제목 변경 시 경로도 재배치하지만 파일 내용 보존.
 
-## 저장 테이블
+## 저장 테이블 (데스크톱 인덱스는 `db/sqlite/001~003` 구현됨: notes, edit_sessions, meta, history_stacks)
 - `notes`: note_id, owner_id(서버), folder, path, format, content_hash, version, timestamps.
 - `edit_sessions`: 시작/종료, 누적 활성 시간, 장비 ID, 최초/재개 구분.
 - `local_history`: note_id, 순번, 변경 내용(델타), redo cursor, 저장 시각.

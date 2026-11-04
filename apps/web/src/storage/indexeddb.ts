@@ -5,6 +5,7 @@ export const DB_VERSION = 1; // 스키마 변경 시 증가하고 onupgradeneede
 export const STORES = { notes: 'notes', folders: 'folders', meta: 'meta' } as const;
 
 import { normalizeNote, type FolderRecord, type Note } from '../domain/types';
+import type { NoteRepository } from './repository';
 
 type StoreName = (typeof STORES)[keyof typeof STORES];
 
@@ -48,25 +49,33 @@ async function query<T>(
   });
 }
 
-export interface MetaRecord<T = unknown> {
+interface MetaRecord<T = unknown> {
   key: string;
   value: T;
 }
 
-export const localStore = {
-  async notes(): Promise<Note[]> {
+/** 브라우저 IndexedDB 저장소 (웹 PWA 기본). 디스크의 .md 파일은 만들지 않습니다(내보내기로 제공). */
+export const indexedDbRepository: NoteRepository = {
+  kind: 'indexeddb',
+  describe: () => 'IndexedDB (browser)',
+  async listNotes() {
     const raw = await query<Array<Partial<Note> & { id: string }>>(STORES.notes, 'readonly', (s) =>
       s.getAll(),
     );
     return raw.map(normalizeNote);
   },
-  saveNote: (note: Note) =>
-    query<IDBValidKey>(STORES.notes, 'readwrite', (s) => s.put(structuredClone(note))),
-  folders: () => query<FolderRecord[]>(STORES.folders, 'readonly', (s) => s.getAll()),
-  saveFolder: (path: string) =>
-    query<IDBValidKey>(STORES.folders, 'readwrite', (s) => s.put({ path })),
-  getMeta: <T>(key: string) =>
-    query<MetaRecord<T> | undefined>(STORES.meta, 'readonly', (s) => s.get(key)),
-  setMeta: (key: string, value: unknown) =>
-    query<IDBValidKey>(STORES.meta, 'readwrite', (s) => s.put({ key, value })),
+  async saveNote(note) {
+    await query(STORES.notes, 'readwrite', (s) => s.put(structuredClone(note)));
+  },
+  listFolders: () => query<FolderRecord[]>(STORES.folders, 'readonly', (s) => s.getAll()),
+  async saveFolder(path) {
+    await query(STORES.folders, 'readwrite', (s) => s.put({ path }));
+  },
+  async getMeta<T>(key: string) {
+    const record = await query<MetaRecord<T> | undefined>(STORES.meta, 'readonly', (s) => s.get(key));
+    return record?.value;
+  },
+  async setMeta(key, value) {
+    await query(STORES.meta, 'readwrite', (s) => s.put({ key, value }));
+  },
 };

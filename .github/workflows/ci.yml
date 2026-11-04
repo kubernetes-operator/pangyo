@@ -10,15 +10,21 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: "22", cache: npm }
       - name: Rust toolchain (rust-toolchain.toml 기준)
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+      - name: 데스크톱(Tauri) 빌드 의존성
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
       - run: npm ci --no-audit --no-fund
       - name: Playwright Chromium
         run: npx -w apps/web playwright install --with-deps chromium
       - run: make check
+      - name: 데스크톱 앱 실행 확인 (Xvfb)
+        run: make desktop-smoke
       - name: Helm lint
         run: make helm-lint

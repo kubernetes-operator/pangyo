@@ -45,3 +45,13 @@
 - 테스트: `make check` 통과 — 서버 통합 6개(T-07, T-08, OpenAPI 12개 operation 계약 대조, 413), 수동: 로컬 실행 + curl + SIGTERM 종료 코드 0, `docker build`(41.7MB) 후 `--read-only --cap-drop ALL` 컨테이너로 `/readyz` 200 확인. 이제 Go 없이 모든 검사가 SKIP 없이 실행됨.
 - 위험: 이미지가 Go 버전보다 큼(distroless/cc + glibc 동적 링크, 41.7MB). Helm 실제 배포는 하지 않음(클러스터 미지정). CI에서 이미지 빌드는 아직 안 함. 헬스 프로브 요청도 INFO 로그로 남음(`RUST_LOG`로 조정).
 - 후속: 로드맵 03단계(공통 도메인/로컬 파일 어댑터 — Tauri와 `crates/core` 연결, 웹 저장소 분리).
+
+## Unreleased — 로드맵 03단계: 저장소 어댑터 + 데스크톱 파일 저장 (`feature/roadmap03-storage-adapters`)
+- 웹: `NoteRepository` 인터페이스 도입, 화면은 저장 방식과 무관. IndexedDB 어댑터(기존 동작 그대로), Tauri 파일 어댑터(`storage/tauri.ts`), 실행 환경 자동 선택(`storage/index.ts`). 서비스워커는 Tauri에서 등록하지 않음. 하단 문구에 저장 위치 표시.
+- Rust: `crates/core` `workspace` feature — `Workspace`(.md 파일 정본 + SQLite 보조 인덱스). 바깥 파일 자동 등록·수정 감지·삭제 반영, 이름 변경 시 파일 이동(ID 유지), 다른 파일 덮어쓰기 금지(Conflict), 대소문자만 바뀐 이름 안전 처리. `FileStore`에 rename/remove/from_relative/modified 추가. SQLite migration `003_workspace.sql`(meta, history_stacks).
+- 데스크톱: Tauri 명령 7개, 앱 데이터 폴더에 인덱스, `custom-protocol` feature, 임시 아이콘, CSP에 `ipc:` 허용, 진단 옵션 `MEMONEST_WEBVIEW_CONSOLE`. 워크스페이스 멤버로 편입(WebKitGTK 없으면 check에서 자동 제외).
+- 검증: `make check` 통과 — Web 단위 64개(저장소 계약 6개 포함) + E2E 9개, Rust(작업공간 8개 포함) 전부. `make desktop-smoke`(Xvfb): 화면→Rust→파일/인덱스 동작, 콘솔 오류 없음. CI에 WebKitGTK 설치 + desktop-smoke 추가, actions v5로 갱신(Node 20 경고 해소).
+- 발견·수정: 디버그 빌드가 개발 서버(devUrl)를 열어 빈 화면이 되던 문제 → `custom-protocol`; CSP가 Tauri IPC를 막아 느린 대체 경로를 쓰던 문제 → `connect-src ipc: http://ipc.localhost`.
+- 위험: 저장할 때마다 노트 전체(Undo 250개 스냅샷 포함)를 IPC로 보내고 세션·Undo를 다시 씀 → 큰 문서에서 느릴 수 있음(델타 저장은 후속). 커밋 중 실패 시 파일 이동과 인덱스가 어긋날 수 있으나 다음 목록 조회에서 파일 기준으로 복구(세션 기록은 잃을 수 있음). Linux에서만 검증. 같은 제목으로 바꾸면 저장 실패 알림만 뜸(화면 내 안내는 후속).
+- 환경: 개발 서버에 WebKitGTK 등 설치 중 systemd 259.9 업그레이드가 함께 진행되었고 `systemd-resolved` 설정 단계가 미완료(iU) 상태 — 사용자 확인 대기.
+- 도메인: 사용자가 준비 중(현재 후보 1개). 저장소에는 기록하지 않고 `.env`의 `APP_BASE_URL`로만 받으며, 외부 공개(HTTPRoute)는 05단계(OIDC/TLS) 이후.

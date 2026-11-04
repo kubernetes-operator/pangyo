@@ -17,6 +17,14 @@ pub enum CoreError {
     NotUtf8(PathBuf),
     #[error("메모를 찾을 수 없습니다: {0}")]
     NotFound(String),
+    #[error("같은 이름의 메모가 이미 있습니다: {0}")]
+    Conflict(String),
     #[error("파일 입출력 오류: {0}")]
     Io(#[from] io::Error),
+    #[cfg(feature = "workspace")]
+    #[error("인덱스 데이터베이스 오류: {0}")]
+    Index(#[from] rusqlite::Error),
+    #[cfg(feature = "workspace")]
+    #[error("인덱스 데이터 형식 오류: {0}")]
+    Json(#[from] serde_json::Error),
 }

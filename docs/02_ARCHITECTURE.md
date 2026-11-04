@@ -29,6 +29,12 @@ flowchart TD
 4. API server: 인증, 저장소 사용량, 동기화, n8n 범위 제한
 5. Async indexer: 변경 이벤트 기반 유사 메모 검색
 
+## 저장소 어댑터 (로드맵 03단계 구현)
+- 화면은 `NoteRepository` 인터페이스(`apps/web/src/storage/repository.ts`)만 사용.
+  - 브라우저: IndexedDB 어댑터 / 데스크톱(Tauri): 파일 어댑터 → Rust 명령 → `crates/core::workspace::Workspace`.
+  - 두 어댑터는 같은 계약 테스트(`repository.test.ts`)를 통과.
+- `Workspace` = `FileStore`(.md/.txt 정본) + SQLite 보조 인덱스(`db/sqlite/001~003`, `PRAGMA user_version`으로 순서 적용).
+
 ## 권장 저장 방식
 - Native 저장소의 **정본**은 사람이 볼 수 있는 `Notes/<0~2 folders>/<note>.md`.
 - SQLite는 ID↔경로 인덱스, 세션 시간, change log, Undo diff, sync cursor 캐시.

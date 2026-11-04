@@ -31,3 +31,6 @@
 | T-08 | Rust 통합 + 계약 | 미구현 `/api/v1/*` 501, `openapi.json`의 12개 operation 전부 실제 응답과 대조, 1MB 초과 본문 413 |
 | T-09 | 수동 | `make helm-lint`, `make image` (CI 미포함) |
 | T-10 | 미자동화 | FreeBSD 실기기 |
+| T-11 | Rust 통합 | 데스크톱 작업공간: 파일↔인덱스 왕복, 이름 변경 시 ID 유지, 다른 메모 덮어쓰기 금지, 바깥 파일 등록·수정 감지·삭제 반영, 세션 교체, 마이그레이션 반복 적용 (`crates/core/tests/workspace.rs`) |
+| T-12 | 단위 | 저장소 계약: IndexedDB(fake-indexeddb)·Tauri(IPC 모의) 어댑터가 같은 동작 (`repository.test.ts`) |
+| T-13 | 실행(Xvfb) | `make desktop-smoke`: 실제 앱이 화면→Rust→파일/인덱스까지 동작, 웹뷰 콘솔 오류 없음 (CI 포함) |

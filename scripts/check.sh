@@ -26,10 +26,16 @@ echo '[3/5] Web: E2E 회귀 (오프라인, 저장, MD/TXT 내보내기, Undo, �
 if [[ "${SKIP_E2E}" == 1 ]]; then echo 'SKIP: SKIP_E2E=1'
 else npm run -s -w apps/web e2e -- --reporter=line; fi
 
-echo '[4/5] Rust fmt / clippy / test (core, server, bsd — Tauri 제외)'
+echo '[4/5] Rust fmt / clippy / test (core[+workspace], server, bsd, native)'
+# 데스크톱 앱(memonest-native)은 WebKitGTK가 있을 때만 포함합니다.
+if pkg-config --exists webkit2gtk-4.1 2>/dev/null; then RUST_SCOPE=(--workspace)
+else RUST_SCOPE=(--workspace --exclude memonest-native); echo 'SKIP: memonest-native (WebKitGTK 없음)'; fi
 cargo fmt --all --check
-cargo clippy --workspace --all-targets --quiet -- -D warnings
-cargo test --workspace --quiet
+cargo clippy "${RUST_SCOPE[@]}" --all-targets --quiet -- -D warnings
+cargo test "${RUST_SCOPE[@]}" --quiet
+# 데스크톱 작업공간(SQLite 인덱스) 기능은 feature로 분리되어 있어 따로 검사
+cargo clippy -p memonest-core --features workspace --all-targets --quiet -- -D warnings
+cargo test -p memonest-core --features workspace --quiet
 
 echo '[5/5] Secrets guard'
 grep -q '^GIT_REMOTE_URL=$' config/project.env.example

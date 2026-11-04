@@ -22,7 +22,7 @@
 | 구분 | 현재 제공 | 아직 제공하지 않음 |
 |---|---|---|
 | Web (TypeScript + Vite) | IndexedDB 로컬 메모, 폴더 2단계, 에디터, MD/TXT 다운로드, 250개 Undo/Redo 스냅샷, 간단 활동 로그, 1/2패널 전환, 국/영 UI, 오프라인 PWA 구성 | 브라우저 파일시스템에 자동 `.md` 저장, 동기화, 계정/과금/AI/서버 검색 |
-| Native | Tauri 프로젝트 골격 | OS별 실파일/SQLite 연결, 듀얼 디스플레이, 모바일 패키징 검증 |
+| Native (Tauri) | Linux 데스크톱: 웹과 같은 화면 + 실제 `.md/.txt` 파일 저장 + SQLite 보조 인덱스(`make desktop`) | Windows/macOS/모바일 빌드·패키징 검증, 듀얼 디스플레이 |
 | FreeBSD | Rust 콘솔 편집기(폴더 2단계, md/txt, 원자적 저장 — `crates/core` 공유, Linux에서만 검증)/기기 설정 | 한글 IME, 2개 실제 디스플레이, 블루투스·Wi-Fi 드라이버 검증, 장비 보안 강화 |
 | Server | Rust(axum) 헬스체크 API(`crates/server`), OpenAPI 계약·계약 테스트, 컨테이너 이미지, Helm 배포 골격 | 인증/싱크/저장소/검색/요금제의 실제 처리 |
 

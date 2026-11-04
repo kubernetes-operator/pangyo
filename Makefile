@@ -1,6 +1,6 @@
 # === MemoNest 개발 명령 모음: 모든 사람/CI/에이전트가 같은 진입점을 사용 ===
 # 사용법: make help
-.PHONY: help setup check check-fast fmt test e2e dev-web build-web dev-api image bsd helm-lint
+.PHONY: help setup check check-fast fmt test e2e dev-web build-web dev-api image bsd desktop desktop-smoke helm-lint
 
 IMAGE ?= memonest-api:dev ## make image IMAGE=<레지스트리>/memonest/api:<태그>
 
@@ -38,6 +38,13 @@ dev-api: ## API 서버 실행 (http://127.0.0.1:8080/healthz)
 
 image: ## API 컨테이너 이미지 빌드 (로컬, push 안 함)
 	docker build -f crates/server/Dockerfile -t $(IMAGE) .
+
+desktop: ## 데스크톱 앱 실행 (웹 빌드 포함, 메모 폴더: $$MEMONEST_NOTES_DIR 또는 ~/MemoNest/Notes)
+	npm run -s -w apps/web build
+	cargo run -p memonest-native --features custom-protocol
+
+desktop-smoke: ## 데스크톱 앱 실행 확인 (Xvfb, 임시 폴더 사용)
+	./scripts/desktop-smoke.sh
 
 bsd: ## BSD 콘솔 메모 앱 실행 (로컬 테스트)
 	cargo run -p memonest-bsd

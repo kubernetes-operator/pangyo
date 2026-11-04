@@ -3,6 +3,7 @@
 //! - [`paths`]: 폴더(최대 2단계)·파일명 규칙. 웹(TypeScript)과 같은 결과를 내야 하며,
 //!   기준 데이터는 `packages/protocol/fixtures/paths.json`입니다.
 //! - [`store`]: 사람이 읽을 수 있는 `Notes/<폴더>/<제목>.md` 파일을 정본으로 쓰는 로컬 저장소.
+//! - `workspace` (feature): 파일 저장소 + SQLite 보조 인덱스(메모 ID, 편집 세션, Undo, 화면 설정). 데스크톱 앱용.
 //!
 //! 동시 편집 잠금(요구 #28)과 동기화는 이 크레이트에 아직 없습니다 (승인 전 구현 금지).
 
@@ -20,6 +21,8 @@ pub mod error;
 pub mod format;
 pub mod paths;
 pub mod store;
+#[cfg(feature = "workspace")]
+pub mod workspace;
 
 pub use error::{CoreError, Result};
 pub use format::NoteFormat;
