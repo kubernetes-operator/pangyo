@@ -9,5 +9,5 @@ echo 'PLAN -> DESIGN -> IMPLEMENT -> VERIFY -> DOCUMENT -> REVIEW'
 echo 'Read: AGENTS.md, docs/01_REQUIREMENTS.md, docs/07_LOCK_APPROVAL.md, docs/08_ROADMAP.md'
 if [[ -z "${REQUIREMENT_ID}" ]]; then echo 'Usage: ./scripts/loop.sh <requirement-ID>; no code is changed'; exit 0; fi
 ./scripts/check.sh
-# AI 에이전트는 로컬 규칙(.roo/*)을 읽지만 이 스크립트는 자동으로 소스 변경/커밋/배포하지 않습니다.
+# AI 에이전트는 AGENTS.md/CLAUDE.md 규칙을 읽지만 이 스크립트는 자동으로 소스 변경/커밋/배포하지 않습니다.
 echo "Verified. Manually update docs/CHANGELOG.md and requirement ${REQUIREMENT_ID} status after review."

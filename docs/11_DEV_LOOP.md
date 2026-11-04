@@ -1,12 +1,12 @@
-# 11. 개발 Loop / Roo Code 운영
+# 11. 개발 Loop / AI 에이전트 운영
 
-Roo Code를 사용하는 경우 `.roomodes`와 `.roo/rules*/`를 프로젝트 루트에 유지합니다. 특정 확장 버전에서는 명령 그룹 정책이 다를 수 있으므로 실제 설치 후 확인합니다.
+Roo Code는 사용하지 않습니다(ADR-0002). 에이전트 공통 규칙은 `AGENTS.md`, Claude Code는 `CLAUDE.md`를 진입점으로 사용합니다. 검증 명령은 사람·CI·에이전트 모두 `make check` 하나로 통일합니다.
 
 ## 반복 루프 (모든 기능마다)
 1. PLAN: 요구 ID, 사용자 스토리, 조건, 불변사항 확인.
 2. DESIGN: UI/DB/API 영향, 오프라인 동작, 보안 경계 확인.
 3. IMPLEMENT: 1기능 1커밋 수준, 최상단 변수 및 주석 명시.
-4. VERIFY: `./scripts/check.sh`, 수동 UI 시나리오, 구체적 실패 기록.
+4. VERIFY: `make check`(CI와 동일), 수동 UI 시나리오, 구체적 실패 기록.
 5. DOCUMENT: `docs/CHANGELOG.md`, 요구 상태, 설계 결정 갱신.
 6. REVIEW: 승인 필요한 항목은 보류하고 다음 기능으로 진행.
 

@@ -1,0 +1,24 @@
+# === CI: 로컬과 동일하게 `make check` 실행. 배포/비밀값 사용 없음 ===
+name: ci
+on:
+  push:
+    branches: [main, develop, "feature/**"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-go@v5      # 임시: 서버 Rust 이전(4단계) 후 제거
+        with: { go-version: "1.24" }
+      - name: Rust toolchain (rust-toolchain.toml 기준)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: make check
+        env: { REQUIRE_GO: "1" }
+      - name: Helm lint
+        run: make helm-lint
