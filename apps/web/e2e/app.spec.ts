@@ -118,19 +118,42 @@ test('T-04 Undo 250회 기록이 새로고침 후에도 유지', async ({ page }
   await expect(page.locator('#editor')).toHaveValue('v11');
 });
 
-test('T-05 60초 무입력 후 재입력하면 새 편집 세션', async ({ page }) => {
+/** 창 최소화/탭 전환을 흉내 냅니다 (headless 브라우저는 실제로 숨길 수 없음). */
+async function setVisibility(page: Page, state: 'visible' | 'hidden'): Promise<void> {
+  await page.evaluate((s) => {
+    Object.defineProperty(document, 'visibilityState', { value: s, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, state);
+}
+
+test('T-05 작성 시간은 키 입력 간격만, 열어둔 시간은 창이 보이는 동안 모두 집계', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
   await createNote(page, 'session');
-  await page.locator('#editor').pressSequentially('a');
+  const editor = page.locator('#editor');
+  await editor.pressSequentially('a');
+  await page.clock.runFor(10_000);
+  await editor.pressSequentially('b'); // 10초 간격 → 작성 시간 +10초
+  await page.clock.runFor(120_000); // 2분 무입력: 작성 시간 제외, 열어둔 시간은 포함
+  await editor.pressSequentially('c'); // 한도(60초) 초과 간격 → +0
+  await expect(page.locator('#timer-active')).toHaveText('00:00:10');
+  await expect(page.locator('#timer-open')).toHaveText(/^00:02:1\d$/);
+  await expect(page.locator('#sessions p')).toHaveCount(1); // 무입력만으로는 세션이 끊기지 않음
+});
+
+test('T-05b 창을 숨겼다 다시 열면 새 세션(재개), 숨긴 동안은 집계 안 함', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await createNote(page, 'resume');
+  await page.clock.runFor(30_000);
+  await setVisibility(page, 'hidden');
+  await page.clock.runFor(600_000); // 10분 최소화
+  await setVisibility(page, 'visible');
   await page.clock.runFor(5_000);
-  await expect(page.locator('#sessions p')).toHaveCount(1);
-  await page.clock.runFor(61_000); // 무입력 → 세션 종료
-  await page.locator('#editor').pressSequentially('b');
   await expect(page.locator('#sessions p')).toHaveCount(2);
-  // 세션 1은 종료 시각이 기록되고, 세션 2는 진행 중('...')
-  await expect(page.locator('#sessions p').nth(1)).not.toContainText(' - ...');
-  await expect(page.locator('#sessions p').nth(0)).toContainText(' - ...');
+  await expect(page.locator('#sessions p').nth(1)).not.toContainText(' - ...'); // 첫 세션 종료됨
+  await expect(page.locator('#sessions p').nth(0)).toContainText(' - ...'); // 재개 세션 진행 중
+  await expect(page.locator('#timer-open')).toHaveText(/^00:00:3[4-6]$/); // 30초 + 5초, 숨긴 10분 제외
 });
 
 test('T-06 F6과 버튼으로 관리/작성 화면 전환', async ({ page }) => {
@@ -184,7 +207,7 @@ test('호환: v0.1 JS 프로토타입이 저장한 IndexedDB 데이터를 그대
   await expect(page.locator('#title')).toHaveValue('옛 메모');
   await expect(page.locator('#editor')).toHaveValue('이전 버전 내용');
   await expect(page.locator('#format')).toHaveValue('txt');
-  await expect(page.locator('#timer')).toHaveText('00:01:00');
+  await expect(page.locator('#timer-active')).toHaveText('00:01:00'); // v0.1 activeMs 유지
   await expect(page.locator('#tree')).toContainText('▸ Work');
   await expect(page.locator('#add-note')).toHaveText('+ Note'); // 저장된 언어 설정(en)
   // undo 기록이 없던 레코드도 편집/Undo가 정상 동작

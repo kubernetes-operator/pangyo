@@ -2,9 +2,11 @@
 export const SETTINGS = Object.freeze({
   historyLimit: 250, // 각 노트에 영속화할 최대 Undo/Redo 기록 개수
   maxFolderDepth: 2, // 루트부터 허용하는 폴더 깊이(폴더 최대 2개)
-  idleAfterMs: 60_000, // 입력이 없으면 활성 편집시간 측정 종료
+  idleAfterMs: 60_000, // 키 입력 간격이 이보다 길면 그 사이는 작성 시간에서 제외
   saveDebounceMs: 300, // 저장 요청 지연, 너무 잦은 IndexedDB 작업 방지
-  timerTickMs: 1000, // 세션 활성시간 갱신 간격
+  timerTickMs: 1000, // 열어둔 시간 갱신 간격
+  sessionSaveEveryMs: 10_000, // 입력이 없어도 열어둔 시간을 이 간격으로 저장
+  minSessionOpenMs: 2_000, // 입력 없이 이보다 짧게 연 세션은 기록하지 않음
   clockTickMs: 10_000, // 상단 시계 갱신 간격
   sessionListMax: 20, // 화면에 보여줄 최근 편집 세션 수
   indentation: '  ', // Markdown 블록 들여쓰기: 공백 두 칸
@@ -29,6 +31,8 @@ export const WORDS: Record<Locale, Record<string, string>> = {
     export: '다운로드',
     import: '가져오기',
     sessions: '편집 세션 기록',
+    typingTime: '작성',
+    openTime: '열림',
   },
   en: {
     folders: 'Folders',
@@ -44,6 +48,8 @@ export const WORDS: Record<Locale, Record<string, string>> = {
     export: 'Download',
     import: 'Import',
     sessions: 'Editing sessions',
+    typingTime: 'Typing',
+    openTime: 'Open',
   },
 };
 

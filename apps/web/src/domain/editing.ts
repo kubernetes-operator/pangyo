@@ -1,4 +1,5 @@
 // === 편집 보조: 블록 들여쓰기(요구 26), 편집 시간 계산(요구 23·24) ===
+// 편집 시간 = 작성 시간(키 입력) + 열어둔 시간(창에 메모가 보이는 시간)을 각각 기록합니다.
 import type { EditSession } from './types';
 
 export interface IndentResult {
@@ -24,18 +25,32 @@ export function indentLines(
   return { start, end: selectionEnd, text };
 }
 
-/** 마지막 입력 후 idleMs가 지났는지 */
-export function isIdle(now: number, lastInputAt: number, idleMs: number): boolean {
-  return now - lastInputAt > idleMs;
+/**
+ * 작성 시간에 더할 값: 직전 입력과의 간격이 idleMs 이하이면 그 간격, 아니면 0.
+ * 첫 입력(lastInputAt=0)과 오래 쉰 뒤의 입력은 0이므로 쉬는 시간은 작성 시간에 들어가지 않습니다.
+ */
+export function typingIncrement(now: number, lastInputAt: number, idleMs: number): number {
+  if (lastInputAt <= 0) return 0;
+  const gap = now - lastInputAt;
+  return gap >= 0 && gap <= idleMs ? gap : 0;
 }
 
-/** 타이머 한 번에 더할 시간. 절전/탭 정지로 크게 건너뛴 시간은 tick 2회분까지만 인정합니다. */
+/** 열어둔 시간 타이머 한 번에 더할 값. 절전 등으로 크게 건너뛴 시간은 tick 2회분까지만 인정합니다. */
 export function tickIncrement(now: number, lastTick: number, tickMs: number): number {
   return Math.max(0, Math.min(now - lastTick, tickMs * 2));
 }
 
 export function totalActiveMs(sessions: readonly EditSession[]): number {
   return sessions.reduce((sum, s) => sum + (s.activeMs || 0), 0);
+}
+
+export function totalOpenMs(sessions: readonly EditSession[]): number {
+  return sessions.reduce((sum, s) => sum + (s.openMs || 0), 0);
+}
+
+/** 입력 없이 잠깐 스쳐 간 세션(목록 넘기기 등)은 기록하지 않습니다. */
+export function isNegligibleSession(session: EditSession, minOpenMs: number): boolean {
+  return session.activeMs === 0 && session.openMs < minOpenMs;
 }
 
 /** 1234567ms → '00:20:34' */

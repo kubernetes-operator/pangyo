@@ -5,10 +5,12 @@ import { parseFolder, folderAncestors, safeFilename } from '../domain/paths';
 import { remember, restore, type HistoryKind } from '../domain/history';
 import {
   indentLines,
-  isIdle,
+  isNegligibleSession,
   tickIncrement,
-  totalActiveMs,
   timeText,
+  totalActiveMs,
+  totalOpenMs,
+  typingIncrement,
 } from '../domain/editing';
 import type { EditSession, FolderRecord, Note, NoteFormat } from '../domain/types';
 
@@ -23,9 +25,10 @@ const state = {
   locale: 'ko' as Locale,
   note: null as Note | null,
   mode: 'split' as Mode,
-  lastInputAt: 0,
+  lastInputAt: 0, // 현재 세션의 마지막 키 입력 시각 (0 = 아직 없음)
   activeSessionId: null as string | null,
-  lastTimerTick: Date.now(),
+  lastOpenTick: Date.now(), // 열어둔 시간을 마지막으로 더한 시각
+  lastSaveRequestAt: 0,
   saveTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   saving: Promise.resolve() as Promise<unknown>,
 };
@@ -131,12 +134,21 @@ function displayTree(): void {
 function renderSessions(): void {
   const node = $('sessions');
   node.replaceChildren();
+  const words = WORDS[state.locale];
   for (const s of (state.note?.sessions ?? []).slice(-SETTINGS.sessionListMax).reverse()) {
     const p = document.createElement('p');
     const end = s.endedAt ? new Date(s.endedAt).toLocaleString() : '...';
-    p.textContent = `${new Date(s.startedAt).toLocaleString()} - ${end} (${timeText(s.activeMs || 0)})`;
+    p.textContent = `${new Date(s.startedAt).toLocaleString()} - ${end} (${words.typingTime} ${timeText(
+      s.activeMs,
+    )} / ${words.openTime} ${timeText(s.openMs)})`;
     node.append(p);
   }
+}
+
+function renderTimers(): void {
+  const sessions = state.note?.sessions ?? [];
+  $('timer-active').textContent = timeText(totalActiveMs(sessions));
+  $('timer-open').textContent = timeText(totalOpenMs(sessions));
 }
 
 function renderEditor(): void {
@@ -152,7 +164,7 @@ function renderEditor(): void {
   $<HTMLSelectElement>('format').value = note.format;
   $('format-label').textContent = '.' + note.format;
   $('created-at').textContent = new Date(note.createdAt).toLocaleString();
-  $('timer').textContent = timeText(totalActiveMs(note.sessions));
+  renderTimers();
   $('save-status').textContent = 'LOCAL SAVED';
   renderSessions();
 }
@@ -174,6 +186,7 @@ async function persist(note: Note): Promise<void> {
 function scheduleSave(): void {
   if (!state.note) return;
   $('save-status').textContent = 'SAVING...';
+  state.lastSaveRequestAt = Date.now();
   clearTimeout(state.saveTimer);
   const target = state.note;
   state.saveTimer = setTimeout(() => void persist(target), SETTINGS.saveDebounceMs);
@@ -188,27 +201,44 @@ function activeSession(): EditSession | undefined {
   return state.note?.sessions.find((s) => s.id === state.activeSessionId);
 }
 
+/** 메모가 열려 있고 창이 보일 때 세션을 시작합니다 (이미 진행 중이면 그대로). */
+function startSession(): void {
+  const note = state.note;
+  if (!note || state.activeSessionId || document.visibilityState === 'hidden') return;
+  const session: EditSession = { id: uid(), startedAt: nowISO(), endedAt: null, activeMs: 0, openMs: 0 };
+  note.sessions.push(session);
+  state.activeSessionId = session.id;
+  state.lastInputAt = 0;
+  state.lastOpenTick = Date.now();
+  renderSessions();
+}
+
+/** 메모 전환·창 숨김·종료 시 세션을 닫습니다. 마지막 tick 이후의 열어둔 시간도 더합니다. */
 function endSession(): void {
+  const note = state.note;
   const session = activeSession();
-  if (session && !session.endedAt) {
+  if (note && session && !session.endedAt) {
+    session.openMs += tickIncrement(Date.now(), state.lastOpenTick, SETTINGS.timerTickMs);
     session.endedAt = nowISO();
+    if (isNegligibleSession(session, SETTINGS.minSessionOpenMs)) {
+      note.sessions = note.sessions.filter((s) => s !== session);
+    }
     scheduleSave();
   }
   state.activeSessionId = null;
+  state.lastInputAt = 0;
 }
 
+/** 키 입력(편집)마다 호출: 직전 입력과의 간격을 작성 시간에 더합니다. */
 function editActivity(): void {
-  const note = state.note;
-  if (!note) return;
+  if (!state.note) return;
+  startSession();
+  const session = activeSession();
+  if (!session) return;
   const current = Date.now();
-  if (state.activeSessionId && isIdle(current, state.lastInputAt, SETTINGS.idleAfterMs)) endSession();
-  if (!state.activeSessionId) {
-    const session: EditSession = { id: uid(), startedAt: nowISO(), endedAt: null, activeMs: 0 };
-    note.sessions.push(session);
-    state.activeSessionId = session.id;
-  }
+  session.activeMs += typingIncrement(current, state.lastInputAt, SETTINGS.idleAfterMs);
   state.lastInputAt = current;
-  state.lastTimerTick = current;
+  renderTimers();
   renderSessions();
 }
 
@@ -239,8 +269,7 @@ async function selectNote(id: string): Promise<void> {
   await flushSave();
   state.selectedId = id;
   state.note = state.notes.find((n) => n.id === id) ?? null;
-  state.activeSessionId = null;
-  state.lastInputAt = 0;
+  startSession();
   renderEditor();
   displayTree();
   await localStore.setMeta('selectedId', id);
@@ -306,19 +335,16 @@ function indentSelection(outdent = false): void {
   applyEdit('content', box.value);
 }
 
+/** 1초마다: 창이 보이는 동안 열어둔 시간을 더하고, 주기적으로 저장합니다. */
 function updateTimer(): void {
-  const current = Date.now();
   const session = activeSession();
-  if (session) {
-    if (isIdle(current, state.lastInputAt, SETTINGS.idleAfterMs) || document.visibilityState === 'hidden') {
-      endSession();
-    } else {
-      session.activeMs += tickIncrement(current, state.lastTimerTick, SETTINGS.timerTickMs);
-      state.lastTimerTick = current;
-      scheduleSave();
-    }
+  if (session && document.visibilityState !== 'hidden') {
+    const current = Date.now();
+    session.openMs += tickIncrement(current, state.lastOpenTick, SETTINGS.timerTickMs);
+    state.lastOpenTick = current;
+    if (current - state.lastSaveRequestAt >= SETTINGS.sessionSaveEveryMs) scheduleSave();
   }
-  if (state.note) $('timer').textContent = timeText(totalActiveMs(state.note.sessions));
+  renderTimers();
 }
 
 function toggleFocus(): void {
@@ -390,14 +416,20 @@ function bindEvents(): void {
       toggleFocus();
     }
   });
+  // 창을 숨기면 세션을 닫고, 다시 보이면 새 세션(재개)을 시작합니다.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       endSession();
       void flushSave();
+    } else {
+      startSession();
     }
   });
-  // 디바운스 저장이 대부분 끝난 상태. 네이티브 어댑터는 내구성 있는 저널을 사용할 예정.
-  window.addEventListener('beforeunload', endSession);
+  // 종료 직전 저장은 최선 노력. 네이티브 어댑터는 내구성 있는 저널을 사용할 예정.
+  window.addEventListener('pagehide', () => {
+    endSession();
+    void flushSave();
+  });
   window.addEventListener('online', updateConnectivity);
   window.addEventListener('offline', updateConnectivity);
 }
@@ -412,6 +444,7 @@ export async function bootstrap(): Promise<void> {
   if (initial) {
     state.selectedId = initial.id;
     state.note = initial;
+    startSession();
   }
   renderEditor();
   displayTree();

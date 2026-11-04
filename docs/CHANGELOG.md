@@ -21,3 +21,11 @@
 - 이전 중 발견·수정: Vite 빌드의 `crossorigin` 스크립트 요청이 `Vary: Origin` 때문에 서비스워커 캐시와 매칭되지 않아 **오프라인 로드 실패** → `caches.match(..., { ignoreVary: true })`로 수정(E2E가 검출).
 - 위험: 서비스워커 캐시 이름이 바뀌어 첫 방문 시 v0.1 캐시(`memonest-v01-static-1`)는 삭제됨(메모 데이터와 무관). Tauri 빌드는 WebKit/GTK 미설치로 미검증. E2E는 Chromium만.
 - 후속: ① T-05 무입력 60초가 활성 시간에 포함되는 문제(요구 23 "키보드 활동 시간만") 수정 여부 결정 ② `prompt/alert` 대화상자를 앱 내 UI로 교체 ③ 3/4단계 `crates/core` + BSD 전환.
+
+## Unreleased — 편집 시간: 작성 시간 + 열어둔 시간 (요구 23·24, `feature/23-edit-time`)
+- 요구 변경(사용자 확정): 편집 시간은 "타이핑하는 시간"과 "창을 열어놓은 시간"을 모두 포함. 두 값을 분리 기록·표시.
+- 변경 파일: `apps/web/src/domain/{types,editing}.ts`(openMs, typingIncrement, totalOpenMs, isNegligibleSession, normalizeSession), `apps/web/src/ui/app.ts`(세션 = 열기~전환/숨김/종료, 숨김 복귀 시 재개 세션, 10초 주기 저장, pagehide 저장), `apps/web/src/settings.ts`, `apps/web/index.html`(작성/열림 표시), 테스트, `db/sqlite/002_session_open_time.sql`, `config/client.example.yaml`, docs 01/04/12.
+- 동작 변화: ① 무입력 60초 동안의 시간이 작성 시간에 들어가던 문제 해소 ② 무입력만으로는 세션이 끊기지 않음(창 숨김/전환 시 끊김) ③ 입력 없이 2초 미만 연 세션은 기록 안 함.
+- 데이터: IndexedDB 레코드에 `sessions[].openMs` 필드 추가(추가형). v0.1 레코드는 0으로 보정, DB_VERSION 변경 없음. SQLite 초안은 migration 002 추가.
+- 테스트: 단위(typingIncrement 경계값, openMs 보정) + E2E T-05(작성 10초 / 열림 2분대), T-05b(숨김 10분 제외, 재개 세션), 호환 테스트 통과.
+- 위험: 열어둔 시간이 10초마다 노트 전체(Undo 스냅샷 포함)를 저장 → 큰 문서에서 쓰기량 증가. 3단계 이후 세션을 별도 저장소로 분리 검토. 실제 창 최소화는 headless에서 흉내만 냄(visibilitychange).

@@ -2,7 +2,15 @@
 import { describe, expect, it } from 'vitest';
 import { FolderError, folderAncestors, parseFolder, safeFilename } from './paths';
 import { remember, restore } from './history';
-import { indentLines, isIdle, tickIncrement, timeText, totalActiveMs } from './editing';
+import {
+  indentLines,
+  isNegligibleSession,
+  tickIncrement,
+  timeText,
+  totalActiveMs,
+  totalOpenMs,
+  typingIncrement,
+} from './editing';
 import { normalizeNote, type Note } from './types';
 
 const LIMIT = 250;
@@ -90,9 +98,18 @@ describe('indentLines (요구 26)', () => {
 });
 
 describe('편집 시간 (요구 23, 24, T-05)', () => {
-  it('60초 초과 무입력이면 idle', () => {
-    expect(isIdle(60_000, 0, 60_000)).toBe(false);
-    expect(isIdle(60_001, 0, 60_000)).toBe(true);
+  it('작성 시간: 입력 간격이 한도 이하일 때만 더하고, 첫 입력과 오래 쉰 뒤 입력은 0', () => {
+    expect(typingIncrement(5_000, 0, 60_000)).toBe(0); // 세션 첫 입력
+    expect(typingIncrement(10_000, 5_000, 60_000)).toBe(5_000);
+    expect(typingIncrement(65_000, 5_000, 60_000)).toBe(60_000); // 정확히 한도
+    expect(typingIncrement(65_001, 5_000, 60_000)).toBe(0); // 쉬는 시간 제외
+    expect(typingIncrement(4_000, 5_000, 60_000)).toBe(0); // 시계 역행
+  });
+  it('입력 없이 잠깐 연 세션은 기록 제외', () => {
+    const s = { id: 'a', startedAt: '', endedAt: null, activeMs: 0, openMs: 1_000 };
+    expect(isNegligibleSession(s, 2_000)).toBe(true);
+    expect(isNegligibleSession({ ...s, openMs: 2_000 }, 2_000)).toBe(false);
+    expect(isNegligibleSession({ ...s, activeMs: 1 }, 2_000)).toBe(false);
   });
   it('절전 등으로 크게 건너뛴 시간은 tick 2회분까지만 인정', () => {
     expect(tickIncrement(1000, 0, 1000)).toBe(1000);
@@ -100,7 +117,12 @@ describe('편집 시간 (요구 23, 24, T-05)', () => {
     expect(tickIncrement(0, 1000, 1000)).toBe(0);
   });
   it('누적 시간과 표시 형식', () => {
-    expect(totalActiveMs([{ id: 'a', startedAt: '', endedAt: null, activeMs: 1500 }])).toBe(1500);
+    const sessions = [
+      { id: 'a', startedAt: '', endedAt: null, activeMs: 1500, openMs: 4000 },
+      { id: 'b', startedAt: '', endedAt: null, activeMs: 500, openMs: 1000 },
+    ];
+    expect(totalActiveMs(sessions)).toBe(2000);
+    expect(totalOpenMs(sessions)).toBe(5000);
     expect(timeText(3_723_000)).toBe('01:02:03');
   });
 });
@@ -112,6 +134,13 @@ describe('normalizeNote (v0.1 데이터 호환)', () => {
     expect(n.redo).toEqual([]);
     expect(n.sessions).toEqual([]);
     expect(n.content).toBe('body');
+  });
+  it('openMs가 없는 v0.1 세션은 0으로 보정', () => {
+    const n = normalizeNote({
+      id: 'x',
+      sessions: [{ id: 's', startedAt: 't', endedAt: null, activeMs: 60_000 } as never],
+    });
+    expect(n.sessions[0]).toEqual({ id: 's', startedAt: 't', endedAt: null, activeMs: 60_000, openMs: 0 });
   });
   it('알 수 없는 format은 md로', () => {
     expect(normalizeNote({ id: 'x', format: 'docx' as never }).format).toBe('md');
