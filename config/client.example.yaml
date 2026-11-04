@@ -1,0 +1,19 @@
+# === Client 기본 변수 (서버 접속·키 값은 환경에서 주입) ===
+app_name: memonest
+locale_default: ko # UI 기본 언어: ko/en; 입력기는 OS가 관리
+locale_allowed: [ko, en] # 향후 언어 팩을 추가할 수 있습니다
+note_format_default: md # md 또는 txt
+folder_max_depth: 2 # 폴더 최대 2단계, 파일은 폴더 내에 저장
+edit_history_limit: 250 # 프로토타입은 전체 스냅샷; 정식판은 델타 저장
+idle_pause_seconds: 60 # 마지막 키입력 이후 이 시간이 지나면 집중 시간 측정 중단
+ui:
+  mode: adaptive # one-screen 또는 two-screen, 실제 물리 듀얼 스크린 추후
+  animation: flip # 단일 화면에서 관리/편집 패널을 전환
+sync:
+  enabled: false # 인증과 충돌 방지 승인 전에는 끔
+  manual_trigger: true # 사용자가 직접 동기화 실행 가능하도록 설계
+  endpoint_env: API_BASE_URL # 실제 주소는 환경 변수에서 읽음
+ai:
+  enabled: false # 개인 API키는 OS 보안 저장소에서만 읽도록 추후 구현
+similarity:
+  enabled: false # 서버 검색 기능 구현 후 활성화

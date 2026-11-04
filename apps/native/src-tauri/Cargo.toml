@@ -1,0 +1,15 @@
+[package]
+# 공통 라이브러리 설정 변수: 출시 전 bundle id, app name 확정 필요.
+name = "memonest"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "memonest_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

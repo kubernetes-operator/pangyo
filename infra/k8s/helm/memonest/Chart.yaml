@@ -1,0 +1,7 @@
+# === Helm Chart 변수: 앱 서버만 배포하고 Postgres/S3 설치는 포함하지 않습니다. ===
+apiVersion: v2
+name: memonest
+version: 0.1.0
+appVersion: "0.1.0"
+description: "MemoNest prototype health-only Go API"
+type: application

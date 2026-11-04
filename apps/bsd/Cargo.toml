@@ -1,0 +1,8 @@
+[package]
+# FreeBSD/aarch64에서도 빌드하기 쉬운 표준 라이브러리 기반 최소 작성기
+name = "memonest-bsd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# 외부 crate 없이 초기 콘솔 실험을 수행합니다.

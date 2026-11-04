@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="description" content="Offline first minimal Markdown notes" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./assets/main.css" />
+  <title>MemoNest</title>
+</head>
+<body class="mode-split">
+  <div class="shell">
+    <header class="topbar">
+      <strong>MEMONEST <small>v0.1</small></strong>
+      <span id="connectivity" aria-live="polite">LOCAL</span>
+      <span id="clock" class="desktop-only">--</span>
+      <button id="language-btn" type="button" title="Language">KO / EN</button>
+      <button id="toggle-btn" type="button" data-i18n="focus">집중 모드 (F6)</button>
+      <button id="split-btn" type="button" data-i18n="split">2패널</button>
+    </header>
+    <main class="panes">
+      <aside class="organizer" id="organizer" aria-label="Organizer">
+        <div class="section-head"><h1 data-i18n="folders">디렉터리</h1><span class="tiny">0-2 DEPTH</span></div>
+        <div class="device-row"><span id="battery">BAT --</span><span id="wifi">NET --</span><span id="bluetooth">BT --</span></div>
+        <div class="toolbar"><button id="add-folder" data-i18n="newFolder">+ 폴더</button><button id="add-note" data-i18n="newNote">+ 메모</button></div>
+        <label class="search-wrap"><span data-i18n="search">검색</span><input id="search" type="search" placeholder="제목 또는 본문" autocomplete="off" /></label>
+        <div id="tree" class="tree" role="tree" aria-label="Notes"></div>
+        <p class="muted" id="folder-path">/</p>
+        <div class="bottom-text"><span data-i18n="trees">Tree (연관 그래프는 서버 연결 후)</span><span id="count">0</span></div>
+      </aside>
+      <section class="writer" id="writer" aria-label="Writer">
+        <div class="section-head writer-head"><h1 data-i18n="writing">메모</h1><span id="save-status">LOCAL ONLY</span></div>
+        <div class="document-title"><input id="title" type="text" maxlength="200" aria-label="Note title" placeholder="메모 제목" /></div>
+        <div class="doc-toolbar"><span id="format-label">.md</span><span id="created-at">--</span><span id="timer">00:00:00</span></div>
+        <textarea id="editor" spellcheck="false" placeholder="여기에 생각을 작성하세요. Markdown을 그대로 입력합니다." aria-label="Note content"></textarea>
+        <div class="doc-actions">
+          <button id="undo-btn" data-i18n="undo">Undo</button><button id="redo-btn" data-i18n="redo">Redo</button>
+          <button id="indent-btn" title="Tab">→</button><button id="outdent-btn" title="Shift+Tab">←</button>
+          <select id="format" title="File format"><option value="md">Markdown (.md)</option><option value="txt">Plain Text (.txt)</option></select>
+          <button id="export-btn" data-i18n="export">다운로드</button><button id="import-btn" data-i18n="import">가져오기</button>
+          <input id="import-file" type="file" accept=".md,.txt,text/plain,text/markdown" hidden />
+        </div>
+        <div class="session-panel"><details><summary data-i18n="sessions">편집 세션 기록</summary><div id="sessions"></div></details></div>
+        <footer id="hint">Local-first browser demo · IndexedDB · Sync / login not implemented</footer>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="./assets/app.js"></script>
+</body>
+</html>

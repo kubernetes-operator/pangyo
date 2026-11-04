@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MemoNest",
+  "version": "0.1.0",
+  "identifier": "dev.memonest.notes",
+  "build": {
+    "frontendDist": "../../web"
+  },
+  "app": {
+    "windows": [
+      { "title": "MemoNest", "width": 1024, "height": 720, "minWidth": 440, "minHeight": 360 }
+    ],
+    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'" }
+  },
+  "bundle": { "active": true, "targets": "all" }
+}

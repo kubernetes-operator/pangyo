@@ -1,0 +1,17 @@
+# === 0. Helm 값: 실제 registry와 tag를 배포 시 CLI로 전달 ===
+replicaCount: 1 # 초기 경량 API, 장애 대비 운영 정책은 후속 수립
+image:
+  repository: "" # 필수: 사전 빌드한 이미지 저장소; 예: registry.example/memonest/api
+  tag: "0.1.0" # 앱 버전
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP # 기본 외부 공개 불가. Gateway/인증 후 노출.
+  port: 8080
+resources:
+  requests: {cpu: 25m, memory: 32Mi}
+  limits: {cpu: 250m, memory: 128Mi}
+httpRoute:
+  enabled: false # OIDC/TLS/도메인 준비 후만 활성화
+  gatewayName: "" # 네임스페이스/허용 정책 검증 필수
+  gatewayNamespace: "" # HTTPS Gateway가 존재하는 네임스페이스
+  hostname: "" # 도메인 변수, 예시로 실제 URL 지정 금지

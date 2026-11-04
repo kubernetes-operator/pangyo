@@ -1,0 +1,11 @@
+{
+  "name": "MemoNest Local Notes",
+  "short_name": "MemoNest",
+  "description": "Offline-first minimal notes demo",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "lang": "ko"
+}
