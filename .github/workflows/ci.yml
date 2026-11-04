@@ -13,8 +13,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22", cache: npm }
-      - uses: actions/setup-go@v5      # 임시: 서버 Rust 이전(4단계) 후 제거
-        with: { go-version: "1.24" }
       - name: Rust toolchain (rust-toolchain.toml 기준)
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -22,6 +20,5 @@ jobs:
       - name: Playwright Chromium
         run: npx -w apps/web playwright install --with-deps chromium
       - run: make check
-        env: { REQUIRE_GO: "1" }
       - name: Helm lint
         run: make helm-lint

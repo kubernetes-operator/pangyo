@@ -5,7 +5,7 @@
 | ID | 요청 | 목표 위치 | 상태 |
 |---|---|---|---|
 | 01 | 가벼운 앱 | `apps/web`, `apps/native` | D |
-| 02 | 로컬 저장 및 선택 클라우드 동기화 | `packages/protocol`, `services/api` | P |
+| 02 | 로컬 저장 및 선택 클라우드 동기화 | `packages/protocol`, `crates/server` | P |
 | 03 | 짧거나 긴 노트 | `apps/web` | D |
 | 04 | Linux/Windows/Android/iOS | `apps/native` | S |
 | 05 | FreeBSD ARM64 장비 | `apps/bsd` | S |

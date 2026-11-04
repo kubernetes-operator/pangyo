@@ -37,3 +37,11 @@
 - 테스트: `make check` 통과 — Web 단위 58개(공통 기준 42건 포함) + E2E 9개, Rust 17개(공통 기준, 저장소 7개: 원자적 덮어쓰기·깊이 제한·심볼릭 링크 차단·비 UTF-8 등, BSD 6개). BSD 바이너리 수동 실행 확인(Linux).
 - 위험: 기존 웹 데이터에 금지 문자가 든 폴더(예: `a*b`)가 있으면 그대로 표시되지만 같은 이름으로 새로 만들 수는 없음. FreeBSD aarch64 빌드는 미검증(Tier 3 타깃, 실기기 필요). Tauri 파일 어댑터 연결은 로드맵 03단계.
 - 후속: 4/4단계 서버 Go → Rust(axum) 이전.
+
+## Unreleased — 서버 Go → Rust(axum) 이전 (ADR-0002 이전 4/4단계, `feature/04-rust-server`)
+- 변경 파일: `crates/server/**`(신규: `lib.rs` 라우터, `main.rs`, `tests/api.rs`, `Dockerfile`), `packages/protocol/openapi.json`(신규, API 계약 원본), `.dockerignore`(신규, 허용 목록), `Cargo.toml`(members), `scripts/{check,dev-api}.sh`, `Makefile`(`image`), CI(Go 제거), Helm `Chart.yaml` 설명, `infra/k8s/README.md`, docs 01/05/09/12/13, ADR-0001(대체 표기)/0002, README, CLAUDE.md, `packages/protocol/README.md`. 삭제: `services/api`(Go).
+- 동작 유지: `/healthz`, `/readyz`, `/api/v1/info` 응답 본문 동일, `/api/v1/*` 그 밖은 501(info에 GET 외 메서드도 501), `nosniff`·`no-store` 헤더, 15초 타임아웃, 기본 주소 `127.0.0.1:8080`·`API_BIND_ADDRESS`, 비-root UID 65532(Helm 값과 일치).
+- 달라진 점: 모르는 비 API 경로 404가 텍스트 → JSON `{"error":"not_found"}`; `Content-Type`에서 `charset=utf-8` 생략(JSON은 UTF-8 고정). 추가: `x-request-id`, 요청 로그, SIGTERM graceful shutdown, 1MB 본문 제한(413).
+- 테스트: `make check` 통과 — 서버 통합 6개(T-07, T-08, OpenAPI 12개 operation 계약 대조, 413), 수동: 로컬 실행 + curl + SIGTERM 종료 코드 0, `docker build`(41.7MB) 후 `--read-only --cap-drop ALL` 컨테이너로 `/readyz` 200 확인. 이제 Go 없이 모든 검사가 SKIP 없이 실행됨.
+- 위험: 이미지가 Go 버전보다 큼(distroless/cc + glibc 동적 링크, 41.7MB). Helm 실제 배포는 하지 않음(클러스터 미지정). CI에서 이미지 빌드는 아직 안 함. 헬스 프로브 요청도 INFO 로그로 남음(`RUST_LOG`로 조정).
+- 후속: 로드맵 03단계(공통 도메인/로컬 파일 어댑터 — Tauri와 `crates/core` 연결, 웹 저장소 분리).

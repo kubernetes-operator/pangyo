@@ -9,6 +9,9 @@
 | `apps/web/build/offline-sw.ts` | 오프라인 서비스워커 생성 규칙 | 예 | 빌드 시 `dist/sw.js` 생성 |
 | `packages/protocol/fixtures/paths.json` | 폴더/파일명 규칙 기준 데이터 (TS·Rust 공통 테스트) | 예 | Vitest, cargo test |
 | `crates/core/src/lib.rs` 상단 상수 | Rust 공통 정책 값 (폴더 깊이, 길이 제한) | 예 | Rust core/BSD |
+| `packages/protocol/openapi.json` | API 계약 원본 (구현/계획 상태 포함) | 예 | 서버 계약 테스트 |
+| `crates/server/src/lib.rs` 상단 상수 | 서버 바인드 기본값, 타임아웃, 본문 제한 (`API_BIND_ADDRESS`, `RUST_LOG` 환경변수) | 예 | API 서버 |
+| `crates/server/Dockerfile`, `.dockerignore` | API 이미지 빌드 (허용 목록 컨텍스트) | 예 | `make image` |
 | `package.json`, `package-lock.json` | npm 워크스페이스·의존성 고정 | 예 | `npm ci` |
 | `config/server.example.yaml` | 서버 계정 등급/스토리지 정책 | 예 | 설계값, 서버 적용 전 |
 | `config/cloud.example.yaml` | 개인 클라우드/공통 클라우드 전략 | 예 | 설계값, 동기화 전 |

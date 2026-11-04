@@ -15,6 +15,8 @@
 
 ## 모니터링/운영
 - 서버: request_id, latency, 4xx/5xx, sync queue depth, quota, indexed backlog.
+  - 현재 구현: 모든 응답에 `x-request-id`(없으면 생성), 요청마다 INFO 로그(method, uri, request_id, status, latency). 미구현 501은 WARN. 레벨은 `RUST_LOG`로 조정(헬스 프로브 로그가 많으면 `tower_http=warn`).
+  - SIGTERM 수신 시 진행 중 요청을 마치고 종료(graceful shutdown).
 - 데이터: DB PITR, object versioning, 사용자 단위 export/삭제 정책 확정.
 - Cloud 저장소의 장애 시 메모 편집 지속, 동기화 실패 알림 및 지수 백오프.
 - 지역별 법률·개인정보·결제 요구는 상용 서비스 시작 전에 별도 검토.

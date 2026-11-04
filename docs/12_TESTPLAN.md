@@ -27,4 +27,7 @@
 | T-05 | E2E (가짜 시계) + 단위 | 작성/열어둔 시간 분리 집계, 창 숨김 시 집계 중단과 재개 세션 (T-05, T-05b) |
 | T-06 | E2E | F6, 집중 모드 버튼, 2패널 버튼 |
 | 호환 | E2E | v0.1 JS가 만든 IndexedDB(undo/redo 없음, 언어 설정)를 그대로 읽고 편집 |
-| T-07~T-10 | 미자동화 | 서버(4단계), Helm(`make helm-lint`만), FreeBSD 실기기 |
+| T-07 | Rust 통합 | `/healthz` 200 + 보안 헤더 + `x-request-id` |
+| T-08 | Rust 통합 + 계약 | 미구현 `/api/v1/*` 501, `openapi.json`의 12개 operation 전부 실제 응답과 대조, 1MB 초과 본문 413 |
+| T-09 | 수동 | `make helm-lint`, `make image` (CI 미포함) |
+| T-10 | 미자동화 | FreeBSD 실기기 |

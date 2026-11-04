@@ -1,6 +1,8 @@
 # === MemoNest 개발 명령 모음: 모든 사람/CI/에이전트가 같은 진입점을 사용 ===
 # 사용법: make help
-.PHONY: help setup check check-fast fmt test e2e dev-web build-web dev-api bsd helm-lint
+.PHONY: help setup check check-fast fmt test e2e dev-web build-web dev-api image bsd helm-lint
+
+IMAGE ?= memonest-api:dev ## make image IMAGE=<레지스트리>/memonest/api:<태그>
 
 help: ## 명령 목록
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -9,7 +11,7 @@ setup: ## 최초 1회: npm 의존성 + E2E용 Chromium 설치
 	npm ci --no-audit --no-fund
 	npx -w apps/web playwright install chromium
 
-check: ## 전체 검증 (JSON, Web 타입/단위/빌드/E2E, Rust fmt/clippy/test, Go, 비밀값 가드)
+check: ## 전체 검증 (JSON, Web 타입/단위/빌드/E2E, Rust fmt/clippy/test, 비밀값 가드)
 	./scripts/check.sh
 
 check-fast: ## E2E를 뺀 빠른 검증
@@ -33,6 +35,9 @@ build-web: ## 웹 빌드 → apps/web/dist (오프라인 서비스워커 포함)
 
 dev-api: ## API 서버 실행 (http://127.0.0.1:8080/healthz)
 	./scripts/dev-api.sh
+
+image: ## API 컨테이너 이미지 빌드 (로컬, push 안 함)
+	docker build -f crates/server/Dockerfile -t $(IMAGE) .
 
 bsd: ## BSD 콘솔 메모 앱 실행 (로컬 테스트)
 	cargo run -p memonest-bsd
