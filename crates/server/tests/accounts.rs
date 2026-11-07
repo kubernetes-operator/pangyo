@@ -388,3 +388,30 @@ async fn readiness_and_info_report_database() {
         .await;
     assert_eq!(info.json["authEnabled"], true);
 }
+
+#[tokio::test]
+async fn server_starts_before_database_and_connects_later() {
+    // 아무도 듣지 않는 포트 → 연결 재시도 중에도 health는 정상, readyz/계정 API는 503
+    let config = Config {
+        database_url: Some("postgres://postgres@127.0.0.1:9/none".into()),
+        ..Config::default()
+    };
+    let router = memonest_server::router(AppState::connect_in_background(config));
+    let app = TestApp { router };
+    assert_eq!(
+        app.call(Method::GET, "/healthz", None, Auth::None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    let ready = app.call(Method::GET, "/readyz", None, Auth::None).await;
+    assert_eq!(
+        (ready.status, ready.json["database"].as_str()),
+        (StatusCode::SERVICE_UNAVAILABLE, Some("connecting"))
+    );
+    let r = app.register("early@example.com").await;
+    assert_eq!(
+        (r.status, r.json["error"].as_str()),
+        (StatusCode::SERVICE_UNAVAILABLE, Some("database_connecting"))
+    );
+}

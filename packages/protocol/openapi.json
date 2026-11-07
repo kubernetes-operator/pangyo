@@ -741,6 +741,7 @@
             "enum": [
               "ok",
               "error",
+              "connecting",
               "not_configured"
             ]
           }
@@ -803,7 +804,8 @@
               "csrf",
               "rate_limited",
               "account_limit_reached",
-              "database_not_configured"
+              "database_not_configured",
+              "database_connecting"
             ]
           },
           "message": {

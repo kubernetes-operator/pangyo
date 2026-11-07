@@ -12,7 +12,10 @@ pub mod config;
 pub mod error;
 pub mod security;
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use axum::routing::{delete, post};
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -60,11 +63,16 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; st
 img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; \
 frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
+/// DB 연결 재시도 간격 (처음 → 최대)
+const DB_RETRY_FIRST: Duration = Duration::from_secs(2);
+const DB_RETRY_MAX: Duration = Duration::from_secs(30);
+
 /// 핸들러가 공유하는 서버 상태
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
-    pub db: Option<PgPool>,
+    /// 연결되면 채워짐. DB가 늦게 준비돼도 서버는 먼저 떠서 /healthz에 응답합니다.
+    db: Arc<OnceLock<PgPool>>,
     pub limiter: Arc<RateLimiter>,
 }
 
@@ -73,7 +81,7 @@ impl AppState {
     pub fn without_database(config: Config) -> Self {
         Self {
             config: Arc::new(config),
-            db: None,
+            db: Arc::new(OnceLock::new()),
             limiter: Arc::new(RateLimiter::new(
                 config::AUTH_RATE_WINDOW,
                 config::AUTH_RATE_LIMIT,
@@ -81,24 +89,63 @@ impl AppState {
         }
     }
 
-    /// 설정의 `DATABASE_URL`로 연결하고 마이그레이션(db/postgres/*.sql)을 적용합니다.
+    /// 설정의 `DATABASE_URL`로 지금 연결하고 마이그레이션(db/postgres/*.sql)을 적용합니다 (테스트용).
     pub async fn connect(config: Config) -> Result<Self, sqlx::Error> {
-        let mut state = Self::without_database(config);
+        let state = Self::without_database(config);
         if let Some(url) = state.config.database_url.clone() {
-            let pool = PgPoolOptions::new()
-                .max_connections(DB_MAX_CONNECTIONS)
-                .acquire_timeout(Duration::from_secs(5))
-                .connect(&url)
-                .await?;
-            MIGRATOR.run(&pool).await?;
-            state.db = Some(pool);
+            let _ = state.db.set(open_database(&url).await?);
         }
         Ok(state)
     }
 
-    pub fn db(&self) -> ApiResult<&PgPool> {
-        self.db.as_ref().ok_or_else(ApiError::database_unavailable)
+    /// 서버용: DB가 준비될 때까지 백그라운드에서 재시도합니다 (그동안 /readyz = 503 connecting).
+    pub fn connect_in_background(config: Config) -> Self {
+        let state = Self::without_database(config);
+        if let Some(url) = state.config.database_url.clone() {
+            let cell = state.db.clone();
+            tokio::spawn(async move {
+                let mut wait = DB_RETRY_FIRST;
+                loop {
+                    match open_database(&url).await {
+                        Ok(pool) => {
+                            let _ = cell.set(pool);
+                            tracing::info!("database connected and migrated");
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, retry_in = ?wait, "database not ready");
+                            tokio::time::sleep(wait).await;
+                            wait = (wait * 2).min(DB_RETRY_MAX);
+                        }
+                    }
+                }
+            });
+        }
+        state
     }
+
+    /// `DATABASE_URL`이 설정되어 있는지 (연결 여부와 무관)
+    pub fn database_configured(&self) -> bool {
+        self.config.database_url.is_some()
+    }
+
+    pub fn db(&self) -> ApiResult<&PgPool> {
+        match self.db.get() {
+            Some(pool) => Ok(pool),
+            None if self.database_configured() => Err(ApiError::database_connecting()),
+            None => Err(ApiError::database_unavailable()),
+        }
+    }
+}
+
+async fn open_database(url: &str) -> Result<PgPool, sqlx::Error> {
+    let pool = PgPoolOptions::new()
+        .max_connections(DB_MAX_CONNECTIONS)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect(url)
+        .await?;
+    MIGRATOR.run(&pool).await?;
+    Ok(pool)
 }
 
 /// 서버 DB 마이그레이션 (빌드 시 포함). 이미 적용된 파일은 수정 금지(체크섬 검사).
@@ -189,11 +236,16 @@ async fn healthz() -> Json<serde_json::Value> {
 
 /// DB를 쓰는 경우 연결까지 확인합니다 (끊기면 503 → Kubernetes가 트래픽을 보내지 않음).
 async fn readyz(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
-    match &state.db {
-        None => {
+    match state.db.get() {
+        None if !state.database_configured() => {
             Json(json!({ "status": "ok", "note": "sync_not_ready", "database": "not_configured" }))
                 .into_response()
         }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "unavailable", "note": "sync_not_ready", "database": "connecting" })),
+        )
+            .into_response(),
         Some(db) => match sqlx::query("SELECT 1").execute(db).await {
             Ok(_) => Json(json!({ "status": "ok", "note": "sync_not_ready", "database": "ok" }))
                 .into_response(),
@@ -214,7 +266,7 @@ async fn info(
 ) -> Json<serde_json::Value> {
     Json(json!({
         "version": VERSION,
-        "authEnabled": state.db.is_some(),
+        "authEnabled": state.database_configured(),
         "syncEnabled": false,
         "warning": "prototype only",
     }))

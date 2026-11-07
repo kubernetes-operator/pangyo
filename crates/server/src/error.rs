@@ -39,6 +39,13 @@ impl ApiError {
     pub fn not_found() -> Self {
         Self::new(StatusCode::NOT_FOUND, "not_found", "찾을 수 없습니다")
     }
+    pub fn database_connecting() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_connecting",
+            "데이터베이스에 연결하는 중입니다. 잠시 후 다시 시도하세요",
+        )
+    }
     pub fn database_unavailable() -> Self {
         Self::new(
             StatusCode::SERVICE_UNAVAILABLE,

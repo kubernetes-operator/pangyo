@@ -27,6 +27,7 @@ spec:
       labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: database}
     spec:
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120 # 종료 시 checkpoint를 마칠 시간
       containers:
         - name: postgres
           image: {{ .Values.postgres.image | quote }}
@@ -36,13 +37,20 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
           ports: [{name: postgres, containerPort: 5432}]
+          # 첫 초기화(initdb)·복구는 느린 스토리지(NFS)에서 수 분 걸릴 수 있음 → 시작 검사가 끝난 뒤에만 liveness 적용
+          # (liveness가 초기화 중에 재시작시키면 데이터 폴더가 깨짐 — 2026-11-07 첫 배포에서 발생)
+          startupProbe:
+            exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}]}
+            periodSeconds: 10
+            failureThreshold: {{ .Values.postgres.startupFailureThreshold }}
           readinessProbe:
             exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}, -d, {{ .Values.database.name | quote }}]}
             periodSeconds: 10
           livenessProbe:
             exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}]}
-            initialDelaySeconds: 30
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
 {{ toYaml .Values.postgres.resources | indent 12 }}
           volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]

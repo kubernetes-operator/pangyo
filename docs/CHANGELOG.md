@@ -75,3 +75,4 @@
 - 의존성 조정: rusqlite 0.37 → 0.32 (sqlx와 SQLite 네이티브 라이브러리 버전 충돌 해소).
 - 클러스터 조회 결과: 같은 NFS에서 Alpine Postgres가 lock 파일 권한 오류로 재시작 반복 사례 → Debian 이미지 사용.
 - 위험: NFS(`nolock`) 위 Postgres — 백업 전 중요 데이터 금지. 요청 제한이 메모리 기반(1대). 비밀번호 재설정·이메일 인증 없음. 공용 Gateway 인증서에 도메인 없음(Cloudflare가 사용자 TLS 처리).
+- 첫 배포(2026-11-07) 실패 대응: ① Postgres 첫 initdb가 NFS에서 30초를 넘겨 liveness가 재시작 → 데이터 폴더 손상(`global/pg_filenode.map` 없음), ② API가 시작 시 DB 연결 실패로 종료 → CrashLoop, ③ `helm --wait` 10분 초과로 릴리스 failed. 수정: Postgres `startupProbe`(최대 10분)+liveness는 시작 후, 종료 유예 120초 / API는 DB를 백그라운드 재시도로 연결(그동안 `/healthz` 200, `/readyz` 503 `connecting`, 계정 API 503 `database_connecting`). 테스트 추가(DB보다 서버가 먼저 떠도 정상).

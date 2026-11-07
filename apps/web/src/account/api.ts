@@ -75,7 +75,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!isJson) throw new ServerUnavailable(`unexpected response ${response.status}`); // 정적 서버 등
   if (!response.ok) {
     const err = data as { error?: string; message?: string };
-    if (err.error === 'database_not_configured' || err.error === 'not_implemented') {
+    if (['database_not_configured', 'database_connecting', 'not_implemented'].includes(err.error ?? '')) {
       throw new ServerUnavailable(err.error);
     }
     throw new ApiError(response.status, err.error ?? 'unknown', err.message ?? `HTTP ${response.status}`);

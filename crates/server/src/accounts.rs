@@ -201,7 +201,7 @@ fn rate_limit(state: &AppState, headers: &HeaderMap, action: &str) -> ApiResult<
 
 pub async fn providers(State(state): State<AppState>) -> Json<ProvidersView> {
     Json(ProvidersView {
-        local: state.db.is_some(),
+        local: state.database_configured(),
         google: false, // 후속: Google OIDC (OAuth 클라이언트는 사용자가 Google Cloud에서 발급)
         registration: match state.config.registration {
             Registration::Open => "open",

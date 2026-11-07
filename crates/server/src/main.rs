@@ -15,9 +15,7 @@ async fn main() -> std::io::Result<()> {
 
     let config = Config::from_env();
     let has_db = config.database_url.is_some();
-    let state = AppState::connect(config)
-        .await
-        .map_err(|e| std::io::Error::other(format!("database: {e}")))?;
+    let state = AppState::connect_in_background(config);
     if !has_db {
         tracing::warn!("DATABASE_URL 없음: 계정 기능 비활성 (health/info만)");
     }
