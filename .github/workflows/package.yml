@@ -4,6 +4,7 @@ name: package
 on:
   workflow_dispatch:
   push:
+    branches: ["**"]  # tags만 지정하면 브랜치 push가 제외되므로 명시 (아래 paths로 범위 제한)
     tags: ["v*"]
     paths:
       - "apps/native/**"
