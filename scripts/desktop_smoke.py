@@ -29,6 +29,10 @@ from pathlib import Path
 
 
 def main() -> int:
+    # Windows 콘솔 기본 인코딩(cp1252 등)에서도 한글 출력이 깨지거나 실패하지 않도록 UTF-8 고정
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("binary", type=Path)
     parser.add_argument("--seconds", type=int, default=DEFAULT_SECONDS)

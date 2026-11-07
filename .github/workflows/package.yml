@@ -69,7 +69,7 @@ jobs:
         if: runner.os == 'Linux'
         run: python scripts/desktop_smoke.py target/release/bundle/appimage/*.AppImage
         shell: bash
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: memonest-${{ matrix.name }}
           path: ${{ matrix.bundles }}
@@ -96,7 +96,7 @@ jobs:
           export NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
           npm run -w apps/native android:init -- --ci
           npm run -w apps/native android:build -- --debug --apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: memonest-android-debug
           path: apps/native/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
