@@ -27,7 +27,14 @@
 - 진단: `MEMONEST_WEBVIEW_CONSOLE=1` 이면 웹뷰 JS 콘솔과 페이지 로드 로그를 터미널에 출력 (리눅스).
 - 리눅스 빌드 의존성: `libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` (+ 실행 확인용 `xvfb`).
 
-## 검증 범위 (2026-11-04)
-- **Linux x86_64에서만** 빌드·실행 확인. Windows/macOS/Android/iOS 빌드와 패키징(`tauri build`, 서명)은 미검증.
-- 아이콘(`icons/`)은 임시 단색 이미지. Windows `.ico`/macOS `.icns`는 패키징 단계에서 생성.
+## 검증 범위 (2026-11-07, CI [실행 기록](https://github.com/kubernetes-operator/pangyo/actions/runs/42343557275))
+| 플랫폼 | 산출물 | 실행 확인 |
+|---|---|---|
+| Linux x86_64 | `.deb` `.rpm` `.AppImage` | 릴리스 앱 + AppImage: 화면→Rust→파일/인덱스 동작 |
+| Windows x64 | `.msi`, NSIS `.exe` | 릴리스 앱: 동일 6개 항목 통과 |
+| macOS arm64 | `.app`, `.dmg` | 릴리스 앱: 동일 6개 항목 통과 |
+| Android | 디버그 APK (4개 ABI, 122MB) | 빌드만. 에뮬레이터/실기기 실행 미확인 |
+| iOS | 시뮬레이터 `.app` (arm64-sim) | 빌드만. 시뮬레이터 실행 미확인 |
+- 서명·공증 없음, macOS x86_64(Intel) 빌드 없음, 설치 프로그램으로 실제 설치 후 실행은 미확인(바이너리 직접 실행만).
+- 아이콘은 임시 디자인(`icon-source.png`).
 - 듀얼 디스플레이, OS 상태(배터리·Wi-Fi·BT) 어댑터는 후속.

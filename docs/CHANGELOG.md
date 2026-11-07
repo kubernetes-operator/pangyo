@@ -64,3 +64,4 @@
 - 검증(로컬, Linux): `tauri build` → .deb 4.1MB / .rpm 4.1MB / .AppImage 85MB, AppImage 실행 확인 통과, .deb 의존성 `libwebkit2gtk-4.1-0, libgtk-3-0` 확인. `make check` 통과.
 - 알려진 문제: 개발 서버 Xvfb에서 Mesa 초기화가 간헐적으로 멈춤(gdb로 확인, 앱 코드 이전 단계) — docs/12_TESTPLAN.md.
 - 위험: 설치 파일 서명 없음(SmartScreen/Gatekeeper 경고). AppImage 크기 큼(WebKit 포함). 모바일 화면 레이아웃·파일 내보내기·권한은 미검증.
+- CI 결과(https://github.com/kubernetes-operator/pangyo/actions/runs/42343557275): Linux·Windows·macOS 빌드+실행 확인 통과, Android 디버그 APK·iOS 시뮬레이터 빌드 통과. 첫 실행에서 Windows 실행 확인이 스크립트의 콘솔 인코딩(cp1252) 문제로 실패 → UTF-8 고정으로 수정. upload-artifact v7.
