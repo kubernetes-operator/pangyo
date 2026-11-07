@@ -1,0 +1,24 @@
+[package]
+# MemoNest API 서버 (Go services/api 대체, ADR-0002). 현재는 health/info만, 나머지 /api/v1은 501.
+name = "memonest-server"
+description = "MemoNest API server (axum)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tower-http = { version = "0.6", features = ["trace", "timeout", "request-id", "set-header", "limit", "util"] }
+tower = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+serde_json = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

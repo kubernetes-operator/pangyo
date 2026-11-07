@@ -1,0 +1,177 @@
+{
+  "$comment": "경로/파일명 규칙의 단일 기준. TypeScript(apps/web)와 Rust(crates/core) 테스트가 모두 이 파일을 읽습니다. 규칙을 바꾸면 여기부터 고치세요.",
+  "maxDepth": 2,
+  "parseFolder": [
+    {
+      "input": "",
+      "ok": ""
+    },
+    {
+      "input": "/",
+      "ok": ""
+    },
+    {
+      "input": "Work",
+      "ok": "Work"
+    },
+    {
+      "input": " Work / Project ",
+      "ok": "Work/Project"
+    },
+    {
+      "input": "Work\\Project/",
+      "ok": "Work/Project"
+    },
+    {
+      "input": "업무/회의록",
+      "ok": "업무/회의록"
+    },
+    {
+      "input": "Work/Project/Deep",
+      "error": "too_deep"
+    },
+    {
+      "input": "..",
+      "error": "invalid"
+    },
+    {
+      "input": "Work/..",
+      "error": "invalid"
+    },
+    {
+      "input": "./a",
+      "error": "invalid"
+    },
+    {
+      "input": ".hidden",
+      "error": "invalid"
+    },
+    {
+      "input": "C:",
+      "error": "invalid"
+    },
+    {
+      "input": "a*b",
+      "error": "invalid"
+    },
+    {
+      "input": "a?b",
+      "error": "invalid"
+    },
+    {
+      "input": "a\u0001b",
+      "error": "invalid"
+    },
+    {
+      "input": "trailing.",
+      "error": "invalid"
+    },
+    {
+      "input": "CON",
+      "error": "invalid"
+    },
+    {
+      "input": "lpt1",
+      "error": "invalid"
+    },
+    {
+      "input": "nul.txt",
+      "error": "invalid"
+    },
+    {
+      "input": "CONSOLE",
+      "ok": "CONSOLE"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "ok": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "error": "invalid"
+    },
+    {
+      "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "ok": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+    }
+  ],
+  "safeFilename": [
+    {
+      "input": "Plan",
+      "output": "Plan"
+    },
+    {
+      "input": "a/b:c*?",
+      "output": "a_b_c__"
+    },
+    {
+      "input": "q\"<>|\\",
+      "output": "q_____"
+    },
+    {
+      "input": "tab\there",
+      "output": "tab_here"
+    },
+    {
+      "input": "delx",
+      "output": "del_x"
+    },
+    {
+      "input": "  ",
+      "output": "Untitled"
+    },
+    {
+      "input": "",
+      "output": "Untitled"
+    },
+    {
+      "input": "﻿ 제목 　",
+      "output": "제목"
+    },
+    {
+      "input": "next",
+      "output": "next"
+    },
+    {
+      "input": "한글",
+      "output": "한글"
+    },
+    {
+      "input": "ends with dots...",
+      "output": "ends with dots"
+    },
+    {
+      "input": "...",
+      "output": "Untitled"
+    },
+    {
+      "input": ".env",
+      "output": "_env"
+    },
+    {
+      "input": "CON",
+      "output": "_CON"
+    },
+    {
+      "input": "com1.backup",
+      "output": "_com1.backup"
+    },
+    {
+      "input": "Console",
+      "output": "Console"
+    },
+    {
+      "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "output": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "$comment": "길이는 UTF-16이 아니라 코드 포인트 기준 (서로게이트 쌍이 잘리지 않음)"
+    },
+    {
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...",
+      "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b",
+      "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

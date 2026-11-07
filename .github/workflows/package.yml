@@ -1,0 +1,125 @@
+# === 패키징 (로드맵 04): 각 OS에서 설치 파일 빌드 → 실제 실행 확인 → 산출물 보관 ===
+# 서명/공증/스토어 배포는 하지 않습니다 (인증서 준비 전). 산출물은 테스트용입니다.
+name: package
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]  # tags만 지정하면 브랜치 push가 제외되므로 명시 (아래 paths로 범위 제한)
+    tags: ["v*"]
+    paths:
+      - "apps/native/**"
+      - "apps/web/**"
+      - "crates/core/**"
+      - "scripts/desktop_smoke.py"
+      - ".github/workflows/package.yml"
+permissions:
+  contents: read
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            app: target/release/memonest-native
+            bundles: |
+              target/release/bundle/deb/*.deb
+              target/release/bundle/rpm/*.rpm
+              target/release/bundle/appimage/*.AppImage
+          - name: windows
+            os: windows-latest
+            app: target/release/memonest-native.exe
+            bundles: |
+              target/release/bundle/msi/*.msi
+              target/release/bundle/nsis/*.exe
+          - name: macos
+            os: macos-latest
+            app: target/release/bundle/macos/MemoNest.app/Contents/MacOS/memonest-native
+            bundles: |
+              target/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - uses: actions/setup-python@v6   # 실행 확인 스크립트 (OS 공통 `python`)
+        with: { python-version: "3.12" }
+      - name: Rust toolchain (rust-toolchain.toml 기준)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux 빌드 의존성
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+      - run: npm ci --no-audit --no-fund
+      - name: 설치 파일 빌드 (tauri build)
+        run: npm run -w apps/native bundle
+      - name: 실행 확인 (릴리스 앱)
+        run: python scripts/desktop_smoke.py "${{ matrix.app }}"
+        shell: bash
+      - name: 실행 확인 (AppImage)
+        if: runner.os == 'Linux'
+        run: python scripts/desktop_smoke.py target/release/bundle/appimage/*.AppImage
+        shell: bash
+      - uses: actions/upload-artifact@v7
+        with:
+          name: memonest-${{ matrix.name }}
+          path: ${{ matrix.bundles }}
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: "17" }
+      - name: Rust toolchain + Android 타깃
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci --no-audit --no-fund
+      - name: Android 프로젝트 생성 + 디버그 APK 빌드
+        run: |
+          export NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
+          npm run -w apps/native android:init -- --ci
+          npm run -w apps/native android:build -- --debug --apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: memonest-android-debug
+          path: apps/native/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    # 서명 팀/인증서가 없어 시뮬레이터 빌드만 시도합니다. 실패해도 다른 결과는 막지 않음.
+    runs-on: macos-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - name: Rust toolchain + iOS 시뮬레이터 타깃
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+      - run: brew install xcodegen
+      - run: npm ci --no-audit --no-fund
+      - name: iOS 프로젝트 생성 + 시뮬레이터 빌드
+        run: |
+          npm run -w apps/native ios:init -- --ci
+          npm run -w apps/native ios:build -- --debug --target aarch64-sim

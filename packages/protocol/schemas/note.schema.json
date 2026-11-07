@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MemoNestNote",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "folder",
+    "format",
+    "content",
+    "version",
+    "modifiedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "folder": {
+      "type": "string",
+      "description": "2단계 이내 '/' 구분 경로"
+    },
+    "format": {
+      "enum": [
+        "md",
+        "txt"
+      ]
+    },
+    "content": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "modifiedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

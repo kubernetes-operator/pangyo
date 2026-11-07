@@ -1,0 +1,28 @@
+# === 비밀/개인 환경 값: 절대 커밋 금지 ===
+.env
+.env.*
+!.env.example
+# 실제 값이 들어간 로컬 사본. 커밋용은 project.env.example
+config/project.env
+*.pem
+*.key
+kubeconfig*
+
+# === 빌드 산출물 ===
+target/
+node_modules/
+dist/
+apps/native/src-tauri/gen/
+coverage/
+playwright-report/
+test-results/
+
+# === 편집기/OS ===
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# === Claude Code 개인 설정 (공용 설정은 .claude/settings.json) ===
+.claude/settings.local.json

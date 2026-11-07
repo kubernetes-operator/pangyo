@@ -1,0 +1,62 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net" modified="2026-10-29T00:00:00.000Z" agent="MemoNest" version="24.7.17" type="device">
+  <diagram name="Page-1" id="architecture">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="650" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="web" value="Web PWA&#10;IndexedDB" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="30" y="60" width="135" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="native" value="Tauri2&#10;Linux Windows Android iOS" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="195" y="60" width="195" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="bsd" value="FreeBSD ARM64&#10;Rust dedicated" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="425" y="60" width="165" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="protocol" value="Common note protocol&#10;UUID / Revision / MD TXT" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="172" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="Kubernetes API&#10;Go / TLS / OIDC (planned)" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="290" width="240" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="pg" value="PostgreSQL&#10;accounts / version" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="30" y="420" width="150" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="obj" value="S3 compatible&#10;file blobs / quotas" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="210" y="420" width="150" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="idx" value="Similarity indexer&#10;server only" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="390" y="420" width="165" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="n8n" value="n8n / API AI providers&#10;scoped connection (planned)" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="595" y="290" width="190" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="e0" value="future sync" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="web" target="protocol">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="future sync" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="native" target="protocol">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="future sync" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="bsd" target="protocol">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="protocol" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="metadata" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="api" target="pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="objects" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="api" target="obj">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="jobs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="api" target="idx">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="OAuth/scopes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="n8n" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

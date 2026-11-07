@@ -1,0 +1,38 @@
+{{- if not .Values.image.repository }}
+{{- fail "image.repository must be set to your own image registry; no default image is provided" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}}
+    spec:
+      automountServiceAccountToken: false # API는 Kubernetes 자격증명이 불필요
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: API_BIND_ADDRESS, value: "0.0.0.0:8080"}
+          ports:
+            - {name: http, containerPort: 8080, protocol: TCP}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

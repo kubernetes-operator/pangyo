@@ -1,0 +1,32 @@
+[package]
+# MemoNest 데스크톱 앱 (Tauri 2). 화면은 apps/web, 저장은 memonest-core Workspace(.md 파일 + SQLite 인덱스).
+# 출시 전 bundle identifier, 앱 이름, 아이콘 확정 필요.
+name = "memonest-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "memonest_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+# 앱에 포함된 웹 빌드(apps/web/dist)를 사용. 없으면 디버그 빌드는 개발 서버(devUrl)를 엽니다.
+# tauri CLI의 build는 자동으로 켭니다. cargo로 직접 빌드할 때: --features custom-protocol
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+memonest-core = { path = "../../../crates/core", features = ["workspace"] }
+serde_json = "1"
+
+# 진단용(리눅스): MEMONEST_WEBVIEW_CONSOLE=1 이면 웹뷰 콘솔 메시지를 표준 출력으로 보냅니다.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
