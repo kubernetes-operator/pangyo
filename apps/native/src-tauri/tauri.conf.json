@@ -30,7 +30,36 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.png"
-    ]
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Offline-first minimal Markdown notes",
+    "longDescription": "MemoNest keeps notes as plain .md/.txt files on your device. Sync and accounts are optional and not yet available.",
+    "publisher": "MemoNest",
+    "copyright": "",
+    "license": "UNLICENSED",
+    "linux": {
+      "deb": {
+        "section": "editors"
+      },
+      "rpm": {
+        "release": "1"
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "android": {
+      "minSdkVersion": 24
+    },
+    "iOS": {
+      "minimumSystemVersion": "14.0"
+    }
   }
 }

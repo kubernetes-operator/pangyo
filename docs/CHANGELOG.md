@@ -55,3 +55,12 @@
 - 위험: 저장할 때마다 노트 전체(Undo 250개 스냅샷 포함)를 IPC로 보내고 세션·Undo를 다시 씀 → 큰 문서에서 느릴 수 있음(델타 저장은 후속). 커밋 중 실패 시 파일 이동과 인덱스가 어긋날 수 있으나 다음 목록 조회에서 파일 기준으로 복구(세션 기록은 잃을 수 있음). Linux에서만 검증. 같은 제목으로 바꾸면 저장 실패 알림만 뜸(화면 내 안내는 후속).
 - 환경: 개발 서버에 WebKitGTK 등 설치 중 systemd 259.9 업그레이드가 함께 진행되었고 `systemd-resolved` 설정 단계가 미완료(iU) 상태 — 사용자 확인 대기.
 - 도메인: 사용자가 준비 중(현재 후보 1개). 저장소에는 기록하지 않고 `.env`의 `APP_BASE_URL`로만 받으며, 외부 공개(HTTPRoute)는 05단계(OIDC/TLS) 이후.
+
+## Unreleased — 로드맵 04단계: 패키징 (`feature/roadmap04-packaging`)
+- 패키징: `apps/native`를 npm 워크스페이스로(@tauri-apps/cli 2.12.3), `npm run -w apps/native bundle|icons|android:*|ios:*`. `tauri.conf.json` 번들 메타데이터(분류, 설명, deb section, rpm release, NSIS 현재 사용자 설치, macOS 11+, Android minSdk 24, iOS 14+). 1024px 원본(`icon-source.png`, 임시 디자인)에서 Windows/macOS/Android/iOS 아이콘 전체 생성.
+- 앱: 모바일은 앱 데이터 폴더 `Notes/`에 저장(데스크톱은 기존 `~/MemoNest/Notes`). `MEMONEST_INDEX_PATH`로 인덱스 위치 지정(테스트가 실제 사용자 폴더를 건드리지 않게).
+- 실행 확인: `scripts/desktop_smoke.py`(Linux/Windows/macOS 공통) — 조건 충족까지 최대 60초 폴링, 프로세스 그룹 전체 종료(이전 bash 버전은 `timeout`/`terminate`가 xvfb-run만 끝내 앱·WebKit 고아 프로세스가 남던 문제 수정), Linux 시작 멈춤 시 최대 2회 재실행(표시함).
+- CI: `.github/workflows/package.yml` — Linux/Windows/macOS 설치 파일 빌드 + 실행 확인 + 산출물 14일 보관, Android 디버그 APK, iOS 시뮬레이터 빌드(실패 허용). 서명/공증 없음.
+- 검증(로컬, Linux): `tauri build` → .deb 4.1MB / .rpm 4.1MB / .AppImage 85MB, AppImage 실행 확인 통과, .deb 의존성 `libwebkit2gtk-4.1-0, libgtk-3-0` 확인. `make check` 통과.
+- 알려진 문제: 개발 서버 Xvfb에서 Mesa 초기화가 간헐적으로 멈춤(gdb로 확인, 앱 코드 이전 단계) — docs/12_TESTPLAN.md.
+- 위험: 설치 파일 서명 없음(SmartScreen/Gatekeeper 경고). AppImage 크기 큼(WebKit 포함). 모바일 화면 레이아웃·파일 내보내기·권한은 미검증.

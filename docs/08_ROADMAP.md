@@ -5,7 +5,7 @@
 | 01 | 요구사항·아키텍처·변수·Git 규칙 확정 | 없음 | 설계 초안 |
 | 02 | Web 로컬 편집기, 2단계 폴더, MD/TXT, 시간, Undo 테스트 | 01 | 시연용 초안 |
 | 03 | 공통 도메인/로컬 파일 어댑터와 브라우저 저장소 분리 | 02 | **완료(Linux)**: 웹 `NoteRepository`(IndexedDB/파일), `crates/core` Workspace, Tauri 연결 |
-| 04 | Tauri Windows/Linux/Android/iOS 패키징 및 테스트 | 03 | Linux 빌드·실행 확인, 패키징 미착수 |
+| 04 | Tauri Windows/Linux/Android/iOS 패키징 및 테스트 | 03 | **진행 중**: Linux 설치 파일 3종 로컬 빌드·실행 확인, CI(`package.yml`)로 Windows/macOS/Android/iOS 빌드 검증 |
 | 05 | OIDC, 사용자, 장비 등록, 저장 공간 계정별 제한 | 03 | 미착수 |
 | 06 | 증분 동기화, 버전 검사, 충돌 보존, 사용자 승인된 잠금 | 05 + 승인 | 보류 |
 | 07 | 서버 검색, n8n 및 클라우드 어댑터 | 06 | 미착수 |

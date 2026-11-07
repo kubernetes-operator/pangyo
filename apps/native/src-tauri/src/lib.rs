@@ -1,10 +1,16 @@
 // === 0. 데스크톱 앱 설정 변수 (자격 증명 없음) ===
 /// 메모 폴더를 직접 지정하는 환경변수 (BSD 앱과 같은 이름)
 const NOTES_DIR_ENV: &str = "MEMONEST_NOTES_DIR";
-/// 기본 메모 폴더: $HOME 기준. BSD 앱과 같은 위치라 두 앱이 같은 .md 파일을 봅니다.
+/// 데스크톱 기본 메모 폴더: $HOME 기준. BSD 앱과 같은 위치라 두 앱이 같은 .md 파일을 봅니다.
+#[cfg(desktop)]
 const APP_FOLDER: &str = "MemoNest/Notes";
+/// 모바일(Android/iOS) 메모 폴더: 앱 전용 데이터 폴더 아래 (홈 폴더 접근 불가)
+#[cfg(mobile)]
+const MOBILE_NOTES_FOLDER: &str = "Notes";
 /// 보조 인덱스 파일 (OS 앱 데이터 폴더 안). 사용자 메모 폴더에는 만들지 않습니다.
 const INDEX_FILE: &str = "index.sqlite";
+/// 인덱스 파일 위치를 직접 지정 (테스트·이동식 설치용). 없으면 OS 앱 데이터 폴더.
+const INDEX_PATH_ENV: &str = "MEMONEST_INDEX_PATH";
 /// 진단: 1이면 웹뷰 JS 콘솔 메시지를 표준 출력으로 보냄 (리눅스 WebKitGTK)
 const WEBVIEW_CONSOLE_ENV: &str = "MEMONEST_WEBVIEW_CONSOLE";
 
@@ -70,10 +76,14 @@ fn set_meta(
 }
 
 fn notes_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
-    match std::env::var_os(NOTES_DIR_ENV) {
-        Some(dir) => Ok(PathBuf::from(dir)),
-        None => Ok(app.path().home_dir()?.join(APP_FOLDER)),
+    if let Some(dir) = std::env::var_os(NOTES_DIR_ENV) {
+        return Ok(PathBuf::from(dir));
     }
+    #[cfg(desktop)]
+    let dir = app.path().home_dir()?.join(APP_FOLDER);
+    #[cfg(mobile)]
+    let dir = app.path().app_data_dir()?.join(MOBILE_NOTES_FOLDER);
+    Ok(dir)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -91,7 +101,10 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let index = app.path().app_data_dir()?.join(INDEX_FILE);
+            let index = match std::env::var_os(INDEX_PATH_ENV) {
+                Some(path) => PathBuf::from(path),
+                None => app.path().app_data_dir()?.join(INDEX_FILE),
+            };
             let workspace = Workspace::open(notes_dir(app)?, &index)?;
             app.manage(AppState(Mutex::new(workspace)));
             if std::env::var_os(WEBVIEW_CONSOLE_ENV).is_some_and(|v| v == "1") {

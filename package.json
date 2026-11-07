@@ -2,6 +2,11 @@
   "name": "memonest",
   "private": true,
   "description": "MemoNest 모노레포 루트 (TypeScript 워크스페이스). Rust는 Cargo.toml 참조.",
-  "workspaces": ["apps/web"],
-  "engines": { "node": ">=22" }
+  "workspaces": [
+    "apps/web",
+    "apps/native"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
 }
