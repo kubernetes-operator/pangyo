@@ -19,8 +19,8 @@
 | 13 | 한국어/영어 기본 | `apps/web` | D |
 | 14 | 다른 입력 언어 추가 | `docs/03_UX.md` | P |
 | 15 | 장비 간 자유로운 파일 전송 | `docs/05_SYNC_API.md` | P |
-| 16 | LAN/인터넷 인증 연결 | `docs/06_SECURITY.md` | P |
-| 17 | 계정 서버 및 유료 저장 용량/999 사용자 | `config/server.example.yaml` | P |
+| 16 | LAN/인터넷 인증 연결 | `crates/server` 계정·장비 등록 API | D (인터넷 로그인·장비 토큰. LAN 발견은 후속) |
+| 17 | 계정 서버 및 유료 저장 용량/999 사용자 | `crates/server` | D (가입/로그인, 등급별 용량 표시, 999명 상한. 결제·사용량 집계는 후속) |
 | 18 | 선택적 AI 개인 계정/API | `docs/06_SECURITY.md` | P |
 | 19 | n8n 읽기/쓰기 API | `docs/05_SYNC_API.md` | P |
 | 20 | 유사도 서버 검색 | `docs/04_DATA.md` | P |

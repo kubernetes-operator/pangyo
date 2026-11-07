@@ -1,6 +1,8 @@
 // === 화면 연결: v0.1 app.js의 동작을 그대로 옮긴 것 (서버 계정/동기화는 구현하지 않음) ===
 import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
+import { isTauri } from '../storage';
+import { createAccountPanel } from '../account/panel';
 import { parseFolder, folderAncestors, safeFilename } from '../domain/paths';
 import { remember, restore, type HistoryKind } from '../domain/history';
 import {
@@ -385,6 +387,14 @@ function bindEvents(): void {
   $('language-btn').onclick = () => setLanguage(state.locale === 'ko' ? 'en' : 'ko');
   $('toggle-btn').onclick = toggleFocus;
   $('split-btn').onclick = () => changeMode('split');
+  // 계정 화면: 웹(서버와 같은 출처)에서만. 데스크톱/모바일 앱은 장비 등록으로 연결 예정(로드맵 06)
+  const accountButton = $('account-btn');
+  if (isTauri()) {
+    accountButton.hidden = true;
+  } else {
+    const panel = createAccountPanel($<HTMLDialogElement>('account-dialog'), () => state.locale);
+    accountButton.onclick = () => void panel.open();
+  }
   $('undo-btn').onclick = () => restoreHistory('undo');
   $('redo-btn').onclick = () => restoreHistory('redo');
   $('indent-btn').onclick = () => indentSelection();

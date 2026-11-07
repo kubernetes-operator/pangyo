@@ -19,4 +19,4 @@ CREATE TABLE IF NOT EXISTS notes (
   UNIQUE (owner_id,path)
 );
 CREATE INDEX IF NOT EXISTS notes_by_owner_modified ON notes(owner_id, modified_at);
--- 주의: RLS/정책, 트랜잭션 할당량 및 인증은 서버 구현 전. 운영에 바로 연결하지 말 것.
+-- 주의: 이 파일은 배포 후 수정 금지(sqlx 체크섬). 변경은 새 번호 파일로. RLS·할당량 예약은 후속.

@@ -9,6 +9,16 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # 서버 계정 API 통합 테스트용 (테스트 전용, 외부 노출 없음)
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_HOST_AUTH_METHOD: trust }
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres@127.0.0.1:55432/postgres
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

@@ -1,0 +1,83 @@
+//! 서버 설정: 모두 환경변수로 주입합니다 (Helm values / .env). 비밀값은 Kubernetes Secret에서만.
+use std::{env, path::PathBuf, time::Duration};
+
+// === 0. 설정 기본값 ===
+/// 총 계정 수 상한 (요구 17: 1000명 미만)
+pub const DEFAULT_MAX_ACCOUNTS: i64 = 999;
+/// 등급별 저장 용량 기본값(MB). 상품 정책 확정 전 임시값 (docs/06_SECURITY.md)
+pub const DEFAULT_FREE_STORAGE_MB: i64 = 100;
+/// 로그인 세션 유지 기간
+pub const DEFAULT_SESSION_DAYS: i64 = 30;
+/// 장비 등록 코드 유효 시간
+pub const PAIRING_CODE_TTL: Duration = Duration::from_secs(10 * 60);
+/// 로그인/가입/장비 등록 요청 제한: 같은 IP에서 이 시간 동안 이 횟수까지
+pub const AUTH_RATE_WINDOW: Duration = Duration::from_secs(5 * 60);
+pub const AUTH_RATE_LIMIT: u32 = 20;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Registration {
+    /// 누구나 가입 (계정 수 상한까지)
+    Open,
+    /// 가입 차단 (기존 계정 로그인만)
+    Closed,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// `DATABASE_URL` — 없으면 계정 기능 없이 health/info만 동작
+    pub database_url: Option<String>,
+    /// `MAX_ACCOUNTS`
+    pub max_accounts: i64,
+    /// `FREE_STORAGE_MB`
+    pub free_storage_mb: i64,
+    /// `REGISTRATION` = open | closed
+    pub registration: Registration,
+    /// `SESSION_DAYS`
+    pub session_days: i64,
+    /// `COOKIE_SECURE` — 로컬 http 개발에서만 false
+    pub cookie_secure: bool,
+    /// `WEB_ROOT` — 웹 앱 빌드(dist) 폴더. 있으면 `/`에서 웹 앱을 함께 제공
+    pub web_root: Option<PathBuf>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            database_url: None,
+            max_accounts: DEFAULT_MAX_ACCOUNTS,
+            free_storage_mb: DEFAULT_FREE_STORAGE_MB,
+            registration: Registration::Open,
+            session_days: DEFAULT_SESSION_DAYS,
+            cookie_secure: true,
+            web_root: None,
+        }
+    }
+}
+
+impl Config {
+    pub fn from_env() -> Self {
+        let d = Self::default();
+        let num = |key: &str, default: i64| {
+            env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        };
+        Self {
+            database_url: env::var("DATABASE_URL").ok().filter(|v| !v.is_empty()),
+            max_accounts: num("MAX_ACCOUNTS", d.max_accounts),
+            free_storage_mb: num("FREE_STORAGE_MB", d.free_storage_mb),
+            registration: match env::var("REGISTRATION").as_deref() {
+                Ok("closed") => Registration::Closed,
+                _ => Registration::Open,
+            },
+            session_days: num("SESSION_DAYS", d.session_days),
+            cookie_secure: env::var("COOKIE_SECURE").map_or(true, |v| v != "false"),
+            web_root: env::var_os("WEB_ROOT").map(PathBuf::from),
+        }
+    }
+
+    pub fn free_quota_bytes(&self) -> i64 {
+        self.free_storage_mb.saturating_mul(1024 * 1024)
+    }
+}

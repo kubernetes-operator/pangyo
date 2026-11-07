@@ -1,6 +1,6 @@
 # === MemoNest 개발 명령 모음: 모든 사람/CI/에이전트가 같은 진입점을 사용 ===
 # 사용법: make help
-.PHONY: help setup check check-fast fmt test e2e dev-web build-web dev-api image bsd desktop desktop-smoke helm-lint
+.PHONY: help setup db-test-up db-test-down check check-fast fmt test e2e dev-web build-web dev-api image bsd desktop desktop-smoke helm-lint
 
 IMAGE ?= memonest-api:dev ## make image IMAGE=<레지스트리>/memonest/api:<태그>
 
@@ -10,6 +10,12 @@ help: ## 명령 목록
 setup: ## 최초 1회: npm 의존성 + E2E용 Chromium 설치
 	npm ci --no-audit --no-fund
 	npx -w apps/web playwright install chromium
+
+db-test-up: ## 테스트 전용 Postgres 실행 (Docker, 127.0.0.1:55432, 비밀번호 없음 — 테스트에만 사용)
+	docker run -d --rm --name memonest-test-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:55432:5432 postgres:17-alpine
+
+db-test-down: ## 테스트 Postgres 정리
+	docker stop memonest-test-pg
 
 check: ## 전체 검증 (JSON, Web 타입/단위/빌드/E2E, Rust fmt/clippy/test, 비밀값 가드)
 	./scripts/check.sh

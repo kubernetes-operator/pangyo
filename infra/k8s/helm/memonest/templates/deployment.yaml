@@ -1,18 +1,22 @@
 {{- if not .Values.image.repository }}
 {{- fail "image.repository must be set to your own image registry; no default image is provided" }}
 {{- end }}
+{{- if not .Values.image.tag }}
+{{- fail "image.tag must be set (e.g. sha-<commit>)" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Release.Name }}
-  labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}}
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
-    matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}}
+    matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
   template:
     metadata:
-      labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}}
+      labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
     spec:
       automountServiceAccountToken: false # API는 Kubernetes 자격증명이 불필요
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
@@ -22,13 +26,24 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - {name: API_BIND_ADDRESS, value: "0.0.0.0:8080"}
+            - {name: RUST_LOG, value: {{ .Values.app.logLevel | quote }}}
+            - {name: REGISTRATION, value: {{ .Values.app.registration | quote }}}
+            - {name: MAX_ACCOUNTS, value: {{ .Values.app.maxAccounts | quote }}}
+            - {name: FREE_STORAGE_MB, value: {{ .Values.app.freeStorageMb | quote }}}
+            - {name: SESSION_DAYS, value: {{ .Values.app.sessionDays | quote }}}
+            - {name: COOKIE_SECURE, value: {{ .Values.app.cookieSecure | quote }}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.database.user }}:$(DB_PASSWORD)@{{ include "memonest.dbHost" . }}:5432/{{ .Values.database.name }}"
           ports:
             - {name: http, containerPort: 8080, protocol: TCP}
-          readinessProbe:
+          readinessProbe: # DB 연결까지 확인
             httpGet: {path: /readyz, port: http}
             periodSeconds: 10
           livenessProbe:
             httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
             periodSeconds: 10
           resources:
 {{ toYaml .Values.resources | indent 12 }}

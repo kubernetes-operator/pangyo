@@ -9,6 +9,7 @@
 - `make dev-web` — 웹 프로토타입 (http://127.0.0.1:5173)
 - `make dev-api` — API 서버 (http://127.0.0.1:8080/healthz) / `make image` — API 컨테이너 이미지 (push 안 함)
 - `make desktop` / `make desktop-smoke` — 데스크톱 앱 실행 / Xvfb 실행 확인
+- `make db-test-up` — 테스트 전용 Postgres(Docker). 실행 중이면 `make check`가 서버 계정 테스트와 실서버 E2E까지 수행
 - `make helm-lint` — Helm 차트 정적 검사 (클러스터 접속 없음)
 
 ## 기술 스택 (ADR-0002)

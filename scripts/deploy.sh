@@ -8,8 +8,9 @@ KUBE_CONTEXT="${KUBE_CONTEXT:-}"                 # 클러스터 오배포 방지
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-memonest}"    # 앱 전용 namespace
 HELM_RELEASE="${HELM_RELEASE:-memonest-api}"     # release 이름
 K8S_IMAGE_REPOSITORY="${K8S_IMAGE_REPOSITORY:-}" # 사용자의 프라이빗 레지스트리
-K8S_IMAGE_TAG="${K8S_IMAGE_TAG:-0.1.0}"         # 배포 이미지 태그
-[[ -n "${KUBE_CONTEXT}" && -n "${K8S_IMAGE_REPOSITORY}" ]] || { echo 'KUBE_CONTEXT and K8S_IMAGE_REPOSITORY are required' >&2; exit 1; }
+K8S_IMAGE_TAG="${K8S_IMAGE_TAG:-}"              # 배포 이미지 태그 (예: sha-<커밋>)
+[[ -n "${KUBE_CONTEXT}" && -n "${K8S_IMAGE_REPOSITORY}" && -n "${K8S_IMAGE_TAG}" ]] || { echo 'KUBE_CONTEXT, K8S_IMAGE_REPOSITORY, K8S_IMAGE_TAG are required' >&2; exit 1; }
+kubectl --context "${KUBE_CONTEXT}" -n "${KUBE_NAMESPACE}" get secret memonest-db >/dev/null 2>&1 || { echo "Secret memonest-db 가 ${KUBE_NAMESPACE}에 없습니다 (infra/k8s/README.md 사전 준비)" >&2; exit 1; }
 command -v kubectl >/dev/null;command -v helm >/dev/null
 kubectl config get-contexts "${KUBE_CONTEXT}"
 echo "Target context=${KUBE_CONTEXT} namespace=${KUBE_NAMESPACE} image=${K8S_IMAGE_REPOSITORY}:${K8S_IMAGE_TAG}"
@@ -19,4 +20,5 @@ read -r -p 'Type DEPLOY to continue: ' approval
 kubectl --context "${KUBE_CONTEXT}" create namespace "${KUBE_NAMESPACE}" --dry-run=client -o yaml | kubectl --context "${KUBE_CONTEXT}" apply -f -
 helm upgrade --install "${HELM_RELEASE}" "${ROOT}/infra/k8s/helm/memonest" \
   --kube-context "${KUBE_CONTEXT}" --namespace "${KUBE_NAMESPACE}" \
-  --set-string "image.repository=${K8S_IMAGE_REPOSITORY}" --set-string "image.tag=${K8S_IMAGE_TAG}" --wait
+  --set-string "image.repository=${K8S_IMAGE_REPOSITORY}" --set-string "image.tag=${K8S_IMAGE_TAG}" \
+  --wait --timeout 10m "$@"   # 추가 옵션 예: --set httpRoute.enabled=true --set httpRoute.hostname=<도메인>

@@ -1,6 +1,6 @@
 # 05. 동기화 및 공개 API 계약(설계 단계)
 
-> 서버 v0.1에서 아래 API는 **아직 동작하지 않습니다**(HTTP 501). `/healthz`, `/readyz`, `/api/v1/info`만 현재 활성화입니다.
+> 계정·장비 등록·용량 API는 **로드맵 05에서 구현**(DB 필요). 노트·동기화·검색·n8n 토큰은 **아직 동작하지 않습니다**(HTTP 501). `/healthz`, `/readyz`, `/api/v1/info`만 현재 활성화입니다.
 > **계약 원본은 `packages/protocol/openapi.json`** (`x-memonest-status: implemented|planned`). 이 표와 다르면 OpenAPI가 우선이며, `crates/server/tests/api.rs`가 모든 operation을 실제 서버와 대조합니다.
 
 ## 권장 API 경로 v1

@@ -11,6 +11,13 @@ use tower::ServiceExt;
 const OPENAPI: &str = include_str!("../../../packages/protocol/openapi.json");
 const SAMPLE_ID: &str = "00000000-0000-4000-8000-000000000000";
 
+/// DB 없는 서버 (health/info만 동작, 계정 API는 503)
+fn app() -> axum::Router {
+    memonest_server::router(memonest_server::AppState::without_database(
+        memonest_server::Config::default(),
+    ))
+}
+
 struct Reply {
     status: StatusCode,
     headers: axum::http::HeaderMap,
@@ -22,9 +29,10 @@ async fn call(method: Method, uri: &str, body: &str) -> Reply {
         .method(method)
         .uri(uri)
         .header(header::CONTENT_TYPE, "application/json")
+        .header("x-memonest-request", "1")
         .body(Body::from(body.to_owned()))
         .unwrap();
-    let response = memonest_server::router().oneshot(request).await.unwrap();
+    let response = app().oneshot(request).await.unwrap();
     let status = response.status();
     let headers = response.headers().clone();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -99,11 +107,13 @@ async fn oversized_body_is_rejected() {
         .header(header::CONTENT_LENGTH, big.len())
         .body(Body::from(big))
         .unwrap();
-    let response = memonest_server::router().oneshot(request).await.unwrap();
+    let response = app().oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
-/// openapi.json의 모든 operation: implemented → 200 + required 필드, planned → 501
+/// openapi.json의 모든 operation (DB 없는 서버 기준):
+/// implemented → 200 + required 필드 / implemented + x-requires-database → 503 / planned → 501
+/// DB가 있을 때의 동작은 tests/accounts.rs 가 검사합니다.
 #[tokio::test]
 async fn every_openapi_operation_matches_server() {
     let spec: Value = serde_json::from_str(OPENAPI).expect("openapi.json 형식 오류");
@@ -112,25 +122,29 @@ async fn every_openapi_operation_matches_server() {
     let mut failures = Vec::new();
     for (path, item) in spec["paths"].as_object().unwrap() {
         for (method, op) in item.as_object().unwrap() {
-            let Ok(http_method) = method.to_uppercase().parse::<Method>() else {
-                continue; // "parameters" 등
-            };
-            if http_method == Method::from_bytes(b"PARAMETERS").unwrap() {
+            if method == "parameters" {
                 continue;
             }
+            let http_method: Method = method.to_uppercase().parse().unwrap();
             let uri = path.replace("{id}", SAMPLE_ID);
-            let r = call(http_method.clone(), &uri, "{}").await;
+            let body = sample_body(&spec, op);
+            let r = call(http_method.clone(), &uri, &body).await;
             let status = op["x-memonest-status"].as_str().unwrap_or("?");
-            let (expected_code, schema_ref) = match status {
-                "implemented" => (
+            let needs_db = op["x-requires-database"].as_bool().unwrap_or(false);
+            let (expected_code, expected_error, schema_ref) = match (status, needs_db) {
+                ("implemented", false) => (
                     StatusCode::OK,
-                    &op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+                    None,
+                    op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+                        .as_str(),
                 ),
-                "planned" => (
-                    StatusCode::NOT_IMPLEMENTED,
-                    &op["responses"]["501"]["content"]["application/json"]["schema"]["$ref"],
+                ("implemented", true) => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Some("database_not_configured"),
+                    None,
                 ),
-                other => {
+                ("planned", _) => (StatusCode::NOT_IMPLEMENTED, Some("not_implemented"), None),
+                (other, _) => {
                     failures.push(format!(
                         "{method} {path}: 알 수 없는 x-memonest-status {other}"
                     ));
@@ -144,15 +158,57 @@ async fn every_openapi_operation_matches_server() {
                 ));
                 continue;
             }
-            let name = schema_ref.as_str().unwrap().rsplit('/').next().unwrap();
-            for field in schemas[name]["required"].as_array().unwrap() {
-                if r.json.get(field.as_str().unwrap()).is_none() {
-                    failures.push(format!("{method} {path}: 응답에 {field} 없음"));
+            if let Some(code) = expected_error {
+                if r.json["error"] != code {
+                    failures.push(format!(
+                        "{method} {path}: error={} (기대 {code})",
+                        r.json["error"]
+                    ));
+                }
+            }
+            if let Some(schema_ref) = schema_ref {
+                let name = schema_ref.rsplit('/').next().unwrap();
+                for field in schemas[name]["required"].as_array().unwrap() {
+                    if r.json.get(field.as_str().unwrap()).is_none() {
+                        failures.push(format!("{method} {path}: 응답에 {field} 없음"));
+                    }
                 }
             }
             checked += 1;
         }
     }
     assert!(failures.is_empty(), "계약 불일치:\n{}", failures.join("\n"));
-    assert_eq!(checked, 12, "openapi.json operation 수(구현 3 + 계획 9)가 바뀌면 이 값과 docs/05_SYNC_API.md를 함께 갱신");
+    assert_eq!(
+        checked, 20,
+        "openapi.json operation 수가 바뀌면 이 값과 docs/05_SYNC_API.md를 함께 갱신"
+    );
+}
+
+/// requestBody 스키마의 필수 필드로 형식이 맞는 예시 본문을 만듭니다.
+fn sample_body(spec: &Value, op: &Value) -> String {
+    let Some(schema_ref) =
+        op["requestBody"]["content"]["application/json"]["schema"]["$ref"].as_str()
+    else {
+        return "{}".to_owned();
+    };
+    let name = schema_ref.rsplit('/').next().unwrap();
+    let schema = &spec["components"]["schemas"][name];
+    let mut body = serde_json::Map::new();
+    for field in schema["required"].as_array().unwrap() {
+        let field = field.as_str().unwrap();
+        let value = if field == "email" {
+            "contract@example.com"
+        } else {
+            "contract-sample-value"
+        };
+        body.insert(field.to_owned(), Value::from(value));
+    }
+    Value::Object(body).to_string()
+}
+
+#[tokio::test]
+async fn malformed_body_is_json_400() {
+    let r = call(Method::POST, "/api/v1/auth/login", "{not json").await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert_eq!(r.json["error"], "invalid_body");
 }

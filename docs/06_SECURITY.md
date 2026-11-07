@@ -3,6 +3,9 @@
 ## 보안 경계
 - 개인 비밀번호, API key, Git key, kubeconfig는 Git 및 Helm values에 저장하지 않음.
 - 인증: OIDC/OAuth2 + PKCE(모바일/데스크톱), 웹은 보안 쿠키 + CSRF 방어 또는 BFF.
+  - **구현(로드맵 05)**: DB 로그인 — Argon2id 비밀번호 해시, 세션 토큰은 SHA-256만 저장, 쿠키 `HttpOnly; Secure; SameSite=Strict`, 상태 변경 요청에 `X-MemoNest-Request: 1` 필수(CSRF), 로그인/가입/장비 등록 IP별 요청 제한(5분 20회), 없는 계정과 틀린 비밀번호를 같은 응답·비슷한 시간으로 처리, 계정 수 상한은 트랜잭션 잠금으로 보장. 장비는 일회용 8자리 코드(10분)를 Bearer 토큰으로 교환, 해제 즉시 무효.
+  - 웹 응답 보안 헤더: CSP(same-origin only), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
+  - Google 로그인은 OAuth 클라이언트(사용자가 Google Cloud에서 발급) 준비 후 `auth_provider='google'`로 추가.
 - 장비 등록: 사용자 승인, 1회용 단기 pairing code, 토큰 회전/폐기, device identity.
 - 저장: HTTPS/TLS, Kubernetes Secret 외부 주입, PostgreSQL 백업, S3 객체 버전 또는 복구.
 - 계정별 테넌트 검사: 인증된 사용자 UUID 기반으로 모든 노트 요청 및 검색 범위를 서버에서 강제.

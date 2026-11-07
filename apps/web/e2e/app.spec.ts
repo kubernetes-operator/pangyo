@@ -215,3 +215,12 @@ test('호환: v0.1 JS 프로토타입이 저장한 IndexedDB 데이터를 그대
   await page.locator('#undo-btn').click();
   await expect(page.locator('#editor')).toHaveValue('이전 버전 내용');
 });
+
+test('계정: 서버 없이 실행하면 "서버에 연결되어 있지 않습니다" (메모는 계속 사용)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#account-btn').click();
+  await expect(page.locator('#account-dialog [role=alert]')).toContainText('서버에 연결되어 있지 않습니다');
+  await page.locator('#account-close').click();
+  await createNote(page, '서버 없이');
+  await expect(page.locator('#title')).toHaveValue('서버 없이');
+});

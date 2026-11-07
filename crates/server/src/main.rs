@@ -1,7 +1,7 @@
 //! MemoNest API 서버 실행 파일.
 use std::env;
 
-use memonest_server::{router, BIND_ENV, DEFAULT_BIND_ADDRESS, LOG_ENV, VERSION};
+use memonest_server::{router, AppState, Config, BIND_ENV, DEFAULT_BIND_ADDRESS, LOG_ENV, VERSION};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -13,14 +13,22 @@ async fn main() -> std::io::Result<()> {
         )
         .init();
 
+    let config = Config::from_env();
+    let has_db = config.database_url.is_some();
+    let state = AppState::connect(config)
+        .await
+        .map_err(|e| std::io::Error::other(format!("database: {e}")))?;
+    if !has_db {
+        tracing::warn!("DATABASE_URL 없음: 계정 기능 비활성 (health/info만)");
+    }
     let addr = env::var(BIND_ENV).unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_owned());
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(
         version = VERSION,
         addr = %listener.local_addr()?,
-        "MemoNest API listening (no sync/auth endpoints implemented)"
+        "MemoNest API listening (accounts: DB, sync: not implemented)"
     );
-    axum::serve(listener, router())
+    axum::serve(listener, router(state))
         .with_graceful_shutdown(shutdown_signal())
         .await
 }

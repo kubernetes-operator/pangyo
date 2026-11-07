@@ -3,6 +3,10 @@ set -euo pipefail
 # === 0. 검증 실행 변수: 외부 인증/배포 없이 로컬과 CI에서 같은 검사를 수행 ===
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SKIP_E2E="${SKIP_E2E:-0}"       # 1이면 브라우저 E2E 생략 (빠른 확인용; 커밋 전에는 0 권장)
+TEST_PG_CONTAINER="memonest-test-pg"   # make db-test-up 이 만드는 테스트 전용 Postgres (trust 인증, 127.0.0.1:55432)
+if [[ -z "${TEST_DATABASE_URL:-}" ]] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${TEST_PG_CONTAINER}"; then
+  export TEST_DATABASE_URL="postgres://postgres@127.0.0.1:55432/postgres"
+fi
 export PATH="${HOME}/.cargo/bin:${PATH}"
 cd "${ROOT}"
 
@@ -32,6 +36,7 @@ if pkg-config --exists webkit2gtk-4.1 2>/dev/null; then RUST_SCOPE=(--workspace)
 else RUST_SCOPE=(--workspace --exclude memonest-native); echo 'SKIP: memonest-native (WebKitGTK 없음)'; fi
 cargo fmt --all --check
 cargo clippy "${RUST_SCOPE[@]}" --all-targets --quiet -- -D warnings
+[[ -n "${TEST_DATABASE_URL:-}" ]] || echo 'SKIP: 서버 계정 DB 테스트 (make db-test-up 으로 테스트 Postgres 실행)'
 cargo test "${RUST_SCOPE[@]}" --quiet
 # 데스크톱 작업공간(SQLite 인덱스) 기능은 feature로 분리되어 있어 따로 검사
 cargo clippy -p memonest-core --features workspace --all-targets --quiet -- -D warnings

@@ -33,6 +33,7 @@ export const WORDS: Record<Locale, Record<string, string>> = {
     sessions: '편집 세션 기록',
     typingTime: '작성',
     openTime: '열림',
+    account: '계정',
   },
   en: {
     folders: 'Folders',
@@ -50,6 +51,7 @@ export const WORDS: Record<Locale, Record<string, string>> = {
     sessions: 'Editing sessions',
     typingTime: 'Typing',
     openTime: 'Open',
+    account: 'Account',
   },
 };
 

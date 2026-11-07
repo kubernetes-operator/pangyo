@@ -1,0 +1,73 @@
+{{- if .Values.postgres.enabled }}
+# 내장 PostgreSQL: 단일 인스턴스. 백업(PITR)은 후속 — docs/09_OPERATIONS.md
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: database}
+  ports: [{name: postgres, port: 5432, targetPort: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: {{ .Release.Name }}-postgres
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: database}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: database}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image | quote }}
+          env:
+            - {name: POSTGRES_USER, value: {{ .Values.database.user | quote }}}
+            - {name: POSTGRES_DB, value: {{ .Values.database.name | quote }}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
+          ports: [{name: postgres, containerPort: 5432}]
+          readinessProbe:
+            exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}, -d, {{ .Values.database.name | quote }}]}
+            periodSeconds: 10
+          livenessProbe:
+            exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}]}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+{{ toYaml .Values.postgres.resources | indent 12 }}
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources: {requests: {storage: {{ .Values.postgres.storage | quote }}}}
+---
+# DB에는 같은 릴리스의 API Pod만 접속 가능
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: database}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
+      ports: [{port: 5432, protocol: TCP}]
+{{- end }}

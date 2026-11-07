@@ -65,3 +65,13 @@
 - 알려진 문제: 개발 서버 Xvfb에서 Mesa 초기화가 간헐적으로 멈춤(gdb로 확인, 앱 코드 이전 단계) — docs/12_TESTPLAN.md.
 - 위험: 설치 파일 서명 없음(SmartScreen/Gatekeeper 경고). AppImage 크기 큼(WebKit 포함). 모바일 화면 레이아웃·파일 내보내기·권한은 미검증.
 - CI 결과(https://github.com/kubernetes-operator/pangyo/actions/runs/42343557275): Linux·Windows·macOS 빌드+실행 확인 통과, Android 디버그 APK·iOS 시뮬레이터 빌드 통과. 첫 실행에서 Windows 실행 확인이 스크립트의 콘솔 인코딩(cp1252) 문제로 실패 → UTF-8 고정으로 수정. upload-artifact v7.
+
+## Unreleased — 로드맵 05단계: 계정·로그인·장비 등록·용량 (`feature/roadmap05-accounts`)
+- 서버: Postgres 연결(sqlx, `db/postgres/002_accounts.sql`), DB 로그인(이메일+비밀번호, Argon2id), 세션 쿠키(HttpOnly·Secure·SameSite=Strict, 토큰 SHA-256 저장), CSRF 헤더, IP별 요청 제한, 계정 수 상한(트랜잭션 잠금), 등급별 용량 조회, 장비 등록(일회용 코드→Bearer 토큰)·목록·해제, `/readyz` DB 확인, 웹 앱 제공(`WEB_ROOT`), 보안 헤더(CSP 등), 잘못된 본문도 JSON 400.
+- 웹: 계정 화면(로그인/가입/로그아웃, 용량, 장비 등록 코드, 장비 목록), 서버 없을 때 안내, Tauri에서는 숨김, Vite 개발 프록시.
+- 계약: OpenAPI 20개 operation(구현 13, 계획 7), `x-requires-database`. Google 로그인은 계획(501).
+- 배포: Helm 0.2.0 — 내장 Postgres(StatefulSet, Debian 이미지, NetworkPolicy), 사용자 생성 Secret 참조, HTTPRoute(공용 Gateway http/https), 이미지에 웹 앱+마이그레이션 포함(47.6MB).
+- 검증: 서버 계정 통합 8개(실제 Postgres, 동시 가입 상한 포함), 무DB 계약 테스트, E2E 12개(실서버+Postgres 2개 포함), 이미지 운영 조건 실행 확인.
+- 의존성 조정: rusqlite 0.37 → 0.32 (sqlx와 SQLite 네이티브 라이브러리 버전 충돌 해소).
+- 클러스터 조회 결과: 같은 NFS에서 Alpine Postgres가 lock 파일 권한 오류로 재시작 반복 사례 → Debian 이미지 사용.
+- 위험: NFS(`nolock`) 위 Postgres — 백업 전 중요 데이터 금지. 요청 제한이 메모리 기반(1대). 비밀번호 재설정·이메일 인증 없음. 공용 Gateway 인증서에 도메인 없음(Cloudflare가 사용자 TLS 처리).

@@ -36,6 +36,9 @@
 | T-13 | 실행 | `scripts/desktop_smoke.py`: 실제 앱이 화면→Rust→파일/인덱스까지 동작 (Linux Xvfb·Windows·macOS, CI `package.yml`) |
 | T-14 | 패키징 | `tauri build` 설치 파일: Linux .deb/.rpm/.AppImage(로컬+CI), Windows .msi/.exe, macOS .dmg(CI). AppImage도 실행 확인 |
 | T-15 | 모바일 | Android 디버그 APK 빌드(CI), iOS 시뮬레이터 빌드 시도(CI, 서명 없음). 에뮬레이터 실행 확인은 미자동화 |
+| T-16 | Rust 통합(Postgres) | 계정: 가입/중복/입력 검증, 로그인·로그아웃, CSRF, 동시 가입 상한, 가입 차단, 장비 등록·Bearer·해제, 요청 제한, readyz (`crates/server/tests/accounts.rs`) |
+| T-17 | E2E(실서버+Postgres) | 웹 계정 화면 가입→용량→등록 코드→로그아웃→재로그인, HttpOnly 쿠키 (`e2e/account.spec.ts`) |
+| T-18 | 이미지 | 읽기 전용·권한 없음으로 실행: 웹 앱 제공, 보안 헤더, Secure 쿠키, readyz DB ok |
 
 ### 알려진 문제
 - **개발 서버 Xvfb에서 데스크톱 앱 시작이 간헐적으로 멈춤 (2026-11-07)**: AMD Ryzen 5 6600H + Mesa 26.0.8(libgallium) + Xvfb 조합에서 GTK가 OpenGL 화면을 만들 때 Mesa 초기화(`driCreateNewScreen3` → `pthread_once` → `pthread_setaffinity`)가 멈춤(gdb 확인, 약 20~50%). 앱 코드 이전 단계이며 `LP_NUM_THREADS=0`, `GDK_GL=disable`, `GALLIUM_DRIVER=softpipe`, Xvfb GLX 끔, DMABUF/컴포지팅 끔 모두 효과 없음. GitHub 러너에서는 재현 안 됨. 대응: 실행 확인 스크립트가 Linux에서 20초 안에 웹뷰가 시작되지 않으면 최대 2회 재실행하고 결과에 표시. **실제 데스크톱(GPU 있는 세션)에서 발생하는지 미확인.**

@@ -1,17 +1,47 @@
-# === 0. Helm 값: 실제 registry와 tag를 배포 시 CLI로 전달 ===
-replicaCount: 1 # 초기 경량 API, 장애 대비 운영 정책은 후속 수립
+# === 0. Helm 값: 레지스트리/태그/도메인은 배포 시 --set 으로 전달 (저장소에 실제 값 기록 금지) ===
+replicaCount: 1 # 요청 제한(rate limit)이 서버 메모리에 있어 1대 기준. 늘리려면 공유 저장소 필요
 image:
-  repository: "" # 필수: 사전 빌드한 이미지 저장소; 예: registry.example/memonest/api
-  tag: "0.1.0" # 앱 버전
+  repository: "" # 필수: 예) ghcr.io/<org>/<repo>/memonest-api
+  tag: "" # 필수: 예) sha-<커밋 7자리>
   pullPolicy: IfNotPresent
 service:
-  type: ClusterIP # 기본 외부 공개 불가. Gateway/인증 후 노출.
+  type: ClusterIP # 외부 노출은 HTTPRoute로만
   port: 8080
 resources:
-  requests: {cpu: 25m, memory: 32Mi}
-  limits: {cpu: 250m, memory: 128Mi}
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 256Mi} # 비밀번호 해시(Argon2) 1회 약 19MiB
+
+# 앱 설정 (crates/server/src/config.rs)
+app:
+  registration: open # open | closed
+  maxAccounts: 999 # 요구 17: 1000명 미만
+  freeStorageMb: 100 # 임시 정책값
+  sessionDays: 30
+  cookieSecure: true # HTTPS 뒤에서는 반드시 true
+  logLevel: info
+
+# DB 연결. 비밀번호는 사용자가 직접 만든 Secret에서만 읽습니다 (차트는 비밀값을 만들지 않음).
+database:
+  existingSecret: memonest-db # kubectl create secret generic memonest-db --from-literal=password=...
+  passwordKey: password # URL에 들어가므로 영문/숫자만 권장 (openssl rand -hex 24)
+  user: memonest
+  name: memonest
+
+# 내장 Postgres (StatefulSet). 외부 DB를 쓰려면 false 후 externalHost 지정
+postgres:
+  enabled: true
+  externalHost: "" # enabled=false 일 때 DB 호스트
+  image: postgres:17-bookworm # 클러스터 NFS에서 검증된 Debian 기반 (alpine은 NFS lock 권한 문제 사례 있음)
+  storage: 5Gi
+  storageClass: "" # 비우면 클러스터 기본 StorageClass
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+# 외부 접속 (Gateway API). 기존 앱들과 같은 방식: 공용 Gateway의 http/https 리스너에 연결
 httpRoute:
-  enabled: false # OIDC/TLS/도메인 준비 후만 활성화
-  gatewayName: "" # 네임스페이스/허용 정책 검증 필수
-  gatewayNamespace: "" # HTTPS Gateway가 존재하는 네임스페이스
-  hostname: "" # 도메인 변수, 예시로 실제 URL 지정 금지
+  enabled: false
+  hostname: "" # 예) 사용자 도메인 — --set 으로만 전달
+  gatewayName: ""
+  gatewayNamespace: ""
+  sectionNames: [http, https]
