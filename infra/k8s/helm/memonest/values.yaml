@@ -33,7 +33,10 @@ postgres:
   externalHost: "" # enabled=false 일 때 DB 호스트
   image: postgres:17-bookworm # 클러스터 NFS에서 검증된 Debian 기반 (alpine은 NFS lock 권한 문제 사례 있음)
   storage: 5Gi
-  startupFailureThreshold: 60 # 시작 검사 10초 × 60 = 최대 10분 (첫 initdb/복구 대기)
+  startupFailureThreshold: 180 # 시작 검사 10초 × 180 = 최대 30분 (느린 NFS에서 첫 initdb/복구 대기)
+  # 첫 초기화 때만 사용. --no-sync: initdb의 수천 번 fsync 생략(이 클러스터 NFS에서 10분 이상 → 수십 초 예상).
+  # 초기화 도중 중단되면 볼륨을 비우고 다시 초기화해야 함 (데이터가 없는 첫 설치 때만 해당)
+  initdbArgs: "--no-sync"
   storageClass: "" # 비우면 클러스터 기본 StorageClass
   resources:
     requests: {cpu: 50m, memory: 128Mi}

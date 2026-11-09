@@ -34,6 +34,9 @@ spec:
           env:
             - {name: POSTGRES_USER, value: {{ .Values.database.user | quote }}}
             - {name: POSTGRES_DB, value: {{ .Values.database.name | quote }}}
+            {{- with .Values.postgres.initdbArgs }}
+            - {name: POSTGRES_INITDB_ARGS, value: {{ . | quote }}}
+            {{- end }}
             - name: POSTGRES_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
           ports: [{name: postgres, containerPort: 5432}]
