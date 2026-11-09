@@ -21,7 +21,7 @@ use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{
-    accounts::{AuthVia, CurrentAccount},
+    accounts::{AuthVia, CurrentAccount, Scope},
     config::{CHANGES_PAGE_MAX, NOTE_CONTENT_MAX_BYTES},
     error::{ApiError, ApiJson, ApiResult},
     AppState,
@@ -137,6 +137,7 @@ fn holder(current: &CurrentAccount, client_id: &str) -> ApiResult<String> {
     Ok(match current.via {
         AuthVia::Session(id) => format!("session:{id}:{client_id}"),
         AuthVia::Device(id) => format!("device:{id}:{client_id}"),
+        AuthVia::Token { id, .. } => format!("token:{id}:{client_id}"),
     })
 }
 
@@ -246,6 +247,7 @@ pub async fn changes(
     current: CurrentAccount,
     Query(q): Query<ChangesQuery>,
 ) -> ApiResult<Json<ChangesResponse>> {
+    current.require(Scope::NotesRead)?;
     let limit = q
         .limit
         .unwrap_or(CHANGES_PAGE_MAX)
@@ -274,6 +276,7 @@ pub async fn get_note(
     current: CurrentAccount,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<NoteView>> {
+    current.require(Scope::NotesRead)?;
     let note: Option<NoteView> = sqlx::query_as(&format!(
         "SELECT {NOTE_COLUMNS} FROM notes WHERE id = $1 AND owner_id = $2"
     ))
@@ -290,6 +293,7 @@ pub async fn put_note(
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<PutNoteRequest>,
 ) -> ApiResult<Json<NoteView>> {
+    current.require(Scope::NotesWrite)?;
     let me = holder(&current, &req.client_id)?;
     let format = NoteFormat::from_extension(&req.format)
         .ok_or_else(|| ApiError::bad_request("invalid_format", "format은 md 또는 txt"))?;
@@ -396,6 +400,7 @@ pub async fn delete_note(
     Path(id): Path<Uuid>,
     Query(q): Query<DeleteNoteQuery>,
 ) -> ApiResult<Json<NoteView>> {
+    current.require(Scope::NotesWrite)?;
     let me = holder(&current, &q.client_id)?;
     let mut tx = state.db()?.begin().await?;
     let existing: Option<(Uuid, i64, i64, bool)> = sqlx::query_as(
@@ -441,6 +446,7 @@ pub async fn acquire_lease(
     Path(id): Path<Uuid>,
     ApiJson(req): ApiJson<LeaseRequest>,
 ) -> ApiResult<Json<LeaseView>> {
+    current.require(Scope::NotesWrite)?;
     let me = holder(&current, &req.client_id)?;
     let label: String = req.label.trim().chars().take(HOLDER_LABEL_MAX).collect();
     let ttl = state.config.lease_ttl_secs;
@@ -511,6 +517,7 @@ pub async fn release_lease(
     Path(id): Path<Uuid>,
     Query(q): Query<LeaseReleaseQuery>,
 ) -> ApiResult<StatusCode> {
+    current.require(Scope::NotesWrite)?;
     let me = holder(&current, &q.client_id)?;
     sqlx::query("DELETE FROM note_leases WHERE note_id = $1 AND holder = $2 AND account_id = $3")
         .bind(id)

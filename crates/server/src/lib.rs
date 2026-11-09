@@ -10,7 +10,9 @@
 pub mod accounts;
 pub mod config;
 pub mod error;
+pub mod integrations;
 pub mod notes;
+pub mod search;
 pub mod security;
 
 use std::{
@@ -228,6 +230,17 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/notes/{id}/lease",
             post(notes::acquire_lease).delete(notes::release_lease),
+        )
+        // 서버 검색·연관 메모, 자동화 토큰 (로드맵 07)
+        .route("/api/v1/search", get(search::search))
+        .route("/api/v1/notes/{id}/similar", get(search::similar))
+        .route(
+            "/api/v1/integrations/tokens",
+            get(integrations::list_tokens).post(integrations::create_token),
+        )
+        .route(
+            "/api/v1/integrations/tokens/{id}",
+            delete(integrations::revoke_token),
         )
         .route("/api/v1", any(not_implemented))
         .route("/api/v1/", any(not_implemented))

@@ -114,7 +114,25 @@ pub struct ProvidersView {
 pub enum AuthVia {
     Session(Uuid),
     Device(Uuid),
+    /// 자동화 토큰(n8n 등): 범위가 제한됨
+    Token {
+        id: Uuid,
+        read: bool,
+        write: bool,
+    },
 }
+
+/// 자동화 토큰이 접근할 수 있는 범위 (세션·장비는 모두 허용)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    NotesRead,
+    NotesWrite,
+    /// 계정·장비·토큰 관리 — 자동화 토큰으로는 불가
+    Account,
+}
+
+/// 자동화 토큰 접두사 (장비 토큰과 구별, 유출 탐지 도구가 찾기 쉽게)
+pub const INTEGRATION_TOKEN_PREFIX: &str = "mn_pat_";
 
 /// 핸들러 인자로 쓰면 로그인한 사용자만 통과합니다.
 pub struct CurrentAccount {
@@ -122,11 +140,52 @@ pub struct CurrentAccount {
     pub via: AuthVia,
 }
 
+impl CurrentAccount {
+    /// 범위 검사: 자동화 토큰은 허용된 범위만, 세션·장비는 모두 허용
+    pub fn require(&self, scope: Scope) -> ApiResult<()> {
+        let allowed = match (self.via, scope) {
+            (AuthVia::Token { read, .. }, Scope::NotesRead) => read,
+            (AuthVia::Token { write, .. }, Scope::NotesWrite) => write,
+            (AuthVia::Token { .. }, Scope::Account) => false,
+            _ => true,
+        };
+        if allowed {
+            Ok(())
+        } else {
+            Err(ApiError::forbidden(
+                "insufficient_scope",
+                "이 토큰으로는 할 수 없는 작업입니다",
+            ))
+        }
+    }
+}
+
 impl FromRequestParts<AppState> for CurrentAccount {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> ApiResult<Self> {
         let db = state.db()?;
+        if let Some(token) =
+            bearer_token(&parts.headers).filter(|t| t.starts_with(INTEGRATION_TOKEN_PREFIX))
+        {
+            let row: Option<(Uuid, Uuid, Vec<String>)> = sqlx::query_as(
+                "UPDATE integration_tokens SET last_used_at = NOW()
+                 WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
+                 RETURNING id, account_id, scopes",
+            )
+            .bind(security::token_hash(token))
+            .fetch_optional(db)
+            .await?;
+            let (id, account, scopes) = row.ok_or_else(ApiError::unauthorized)?;
+            return Ok(Self {
+                id: account,
+                via: AuthVia::Token {
+                    id,
+                    read: scopes.iter().any(|s| s == "notes:read"),
+                    write: scopes.iter().any(|s| s == "notes:write"),
+                },
+            });
+        }
         if let Some(token) = bearer_token(&parts.headers) {
             let row: Option<(Uuid, Uuid)> = sqlx::query_as(
                 "UPDATE devices SET last_seen_at = NOW()
@@ -346,6 +405,7 @@ pub async fn me(
     State(state): State<AppState>,
     current: CurrentAccount,
 ) -> ApiResult<Json<AccountView>> {
+    current.require(Scope::Account)?;
     Ok(Json(load_account(state.db()?, current.id).await?))
 }
 
@@ -353,6 +413,7 @@ pub async fn quota(
     State(state): State<AppState>,
     current: CurrentAccount,
 ) -> ApiResult<Json<QuotaView>> {
+    current.require(Scope::Account)?;
     let a = load_account(state.db()?, current.id).await?;
     Ok(Json(QuotaView {
         tier: a.tier,
@@ -451,6 +512,7 @@ pub async fn list_devices(
     State(state): State<AppState>,
     current: CurrentAccount,
 ) -> ApiResult<Json<Vec<DeviceView>>> {
+    current.require(Scope::Account)?;
     let devices = sqlx::query_as(
         "SELECT id, name, platform, created_at, last_seen_at, revoked_at FROM devices
          WHERE account_id = $1 ORDER BY created_at",
@@ -466,6 +528,7 @@ pub async fn revoke_device(
     current: CurrentAccount,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    current.require(Scope::Account)?;
     let done = sqlx::query(
         "UPDATE devices SET revoked_at = COALESCE(revoked_at, NOW()) WHERE id = $1 AND account_id = $2",
     )
