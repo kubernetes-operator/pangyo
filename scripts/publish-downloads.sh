@@ -12,16 +12,18 @@ RELEASE="${HELM_RELEASE:-memonest-api}"
 PVC="${RELEASE}-downloads"
 KEEP_VERSIONS="${KEEP_VERSIONS:-2}"              # 보관할 버전 수 (NAS 용량 고려)
 REPO="${GITHUB_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "${ROOT}/Cargo.toml" | head -1)"
+VERSION="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "${ROOT}/Cargo.toml" | head -1)"   # 줄 끝 주석 무시
+[[ -n "${VERSION}" ]] || { echo "Cargo.toml에서 버전을 읽지 못했습니다" >&2; exit 1; }
+MAX_FILE_MB="${MAX_FILE_MB:-200}"               # 이보다 큰 파일은 건너뜀 (디버그 APK 475MB 등, NAS 용량 고려)
 WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"; kubectl --context "${KUBE_CONTEXT}" -n "${KUBE_NAMESPACE}" delete pod memonest-downloads-upload --ignore-not-found --wait=false >/dev/null 2>&1 || true' EXIT
 
 echo "[1/4] 실행 ${RUN_ID}의 설치 파일 받기 (${REPO})"
 gh run download "${RUN_ID}" -R "${REPO}" -D "${WORK}/artifacts" -n memonest-windows -n memonest-macos -n memonest-linux -n memonest-android-debug
 mkdir -p "${WORK}/out/${VERSION}"
-python3 - "${WORK}/artifacts" "${WORK}/out" "${VERSION}" <<'PY'
+python3 - "${WORK}/artifacts" "${WORK}/out" "${VERSION}" "${MAX_FILE_MB}" <<'PY'
 import hashlib, json, shutil, sys
 from pathlib import Path
-src, out, ver = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+src, out, ver, max_mb = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], int(sys.argv[4])
 rules = [  # (id, 플랫폼, 설명, 파일 패턴)
     ("windows-msi", "Windows", "설치 프로그램 (.msi)", "*.msi"),
     ("windows-exe", "Windows", "설치 프로그램 (.exe, 현재 사용자)", "*-setup.exe"),
@@ -37,6 +39,8 @@ for fid, platform, label, pattern in rules:
     if not found:
         print(f"  건너뜀: {fid} ({pattern} 없음)"); continue
     f = found[0]
+    if f.stat().st_size > max_mb * 1024 * 1024:
+        print(f"  건너뜀: {fid} ({f.stat().st_size // 1048576} MB > {max_mb} MB, MAX_FILE_MB로 조정)"); continue
     dest = out / ver / f.name
     shutil.copy2(f, dest)
     files.append({"id": fid, "platform": platform, "label": label, "file": f"{ver}/{f.name}",

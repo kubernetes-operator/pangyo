@@ -126,3 +126,4 @@
 - 배포: Helm `downloads.*` PVC(2Gi RWX, keep), API 읽기 전용 마운트 / `scripts/publish-downloads.sh`(gh 결과물 → 임시 Pod 복사 → 목록 원자 교체 → 최근 2개 버전 보관).
 - 테스트: 서버 3개(경로 비노출·토큰 링크·재다운로드·잘못된 토큰·저장소 밖 경로 제외·비로그인/자동화 토큰 거부·미설정 503), 계약 28 operation, E2E 1개(브라우저 다운로드 파일 내용 확인).
 - 위험: NAS(90%) 사용, 링크는 5분 안에 공유되면 다른 사람도 받을 수 있음(로그인 사용자만 발급). iOS는 시뮬레이터 빌드라 제외.
+- **배포(2026-11-09)**: 릴리스 rev 5, 이미지 `sha-b130ec5`, 마이그레이션 006, 다운로드 PVC 2Gi(RWX). 배포 중 2초 간격 확인 7회 중 2회 실패(502·응답 없음) → 차트에 `maxUnavailable: 0`, `preStop sleep 8s` 추가(다음 배포부터). 게시: 실행 42572153752의 Windows .msi/.exe, macOS .dmg, Linux .deb/.rpm/.AppImage (102MB). 디버그 APK 464MB는 용량 문제로 제외(`MAX_FILE_MB` 기본 200) — 릴리스(arm64 전용) APK 빌드는 후속. 스크립트 수정: Cargo.toml 버전 줄 주석 때문에 버전을 못 읽던 문제.
