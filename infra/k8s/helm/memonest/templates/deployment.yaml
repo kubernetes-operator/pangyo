@@ -32,6 +32,7 @@ spec:
             - {name: FREE_STORAGE_MB, value: {{ .Values.app.freeStorageMb | quote }}}
             - {name: SESSION_DAYS, value: {{ .Values.app.sessionDays | quote }}}
             - {name: COOKIE_SECURE, value: {{ .Values.app.cookieSecure | quote }}}
+            - {name: LEASE_TTL_SECS, value: {{ .Values.app.leaseTtlSecs | quote }}}
             - name: DB_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
             - name: DATABASE_URL

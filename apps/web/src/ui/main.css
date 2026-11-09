@@ -27,3 +27,15 @@
 .quota{display:grid;gap:4px;font-size:12px}.quota meter{width:100%}
 .pairing-code{font-family:ui-monospace,Consolas,monospace;font-size:20px;letter-spacing:.12em;min-height:1.2em}
 .device-list{list-style:none;padding:0;margin:0;font-size:13px}.device-list li{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--hairline)}
+
+/* === 동기화 (로드맵 06) === */
+#sync-status{font-size:12px;color:var(--muted)}
+.sync-banner{border:1px solid var(--ink);border-radius:4px;padding:8px 10px;margin:4px 0 6px;font-size:12px;display:grid;gap:6px}
+.sync-banner p{margin:0}
+.sync-banner[hidden]{display:none} /* display:grid가 hidden 속성을 덮어쓰지 않게 */
+.sync-banner.locked{background:#f1f1f1}
+.sync-banner.conflict{border-width:2px}
+.sync-banner.error{border-color:#a00;color:#a00}
+.sync-banner pre{white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--panel);padding:6px;margin:4px 0 0;font-size:12px}
+.sync-banner .toolbar button{font-size:12px}
+body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--muted)}

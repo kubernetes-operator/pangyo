@@ -4,7 +4,7 @@ name: image
 on:
   workflow_dispatch:
   push:
-    branches: [main, "feature/roadmap05-*"]
+    branches: [main, "feature/roadmap05-*", "feature/roadmap06-*"]
     tags: ["v*"]
     paths:
       - "crates/**"

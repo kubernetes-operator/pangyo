@@ -1,6 +1,8 @@
 # 05. 동기화 및 공개 API 계약(설계 단계)
 
-> 계정·장비 등록·용량 API는 **로드맵 05에서 구현**(DB 필요). 노트·동기화·검색·n8n 토큰은 **아직 동작하지 않습니다**(HTTP 501). `/healthz`, `/readyz`, `/api/v1/info`만 현재 활성화입니다.
+> 계정·장비 등록·용량(로드맵 05)과 **메모 동기화·편집 임대(로드맵 06, ADR-0003 A안)가 구현**되어 있습니다. 묶음 커밋(`/sync/commit`)·유사 검색·n8n 토큰·Google 로그인은 아직 501.
+>
+> 동기화 규칙: 변경 목록은 `GET /notes?since=<cursor>`(묘비 포함). 저장 `PUT /notes/{id}`는 `baseVersion`이 서버 버전과 다르면 409(덮어쓰지 않음). 기존 메모 저장·삭제는 `POST /notes/{id}/lease`로 받은 유효한 임대와 `fencingToken` 필요(없거나 다른 기기 보유 시 423). 임대 TTL 기본 90초, 클라이언트가 1/3마다 갱신, 입력 없이 2분이면 반납. `/healthz`, `/readyz`, `/api/v1/info`만 현재 활성화입니다.
 > **계약 원본은 `packages/protocol/openapi.json`** (`x-memonest-status: implemented|planned`). 이 표와 다르면 OpenAPI가 우선이며, `crates/server/tests/api.rs`가 모든 operation을 실제 서버와 대조합니다.
 
 ## 권장 API 경로 v1

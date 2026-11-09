@@ -49,6 +49,7 @@ spec:
           readinessProbe:
             exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}, -d, {{ .Values.database.name | quote }}]}
             periodSeconds: 10
+            timeoutSeconds: 5 # NAS 순간 지연(2026-11-09 점검: 1초 초과 1회)으로 인한 오탐 방지
           livenessProbe:
             exec: {command: [pg_isready, -U, {{ .Values.database.user | quote }}]}
             periodSeconds: 20

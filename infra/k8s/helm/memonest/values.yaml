@@ -18,6 +18,7 @@ app:
   freeStorageMb: 100 # 임시 정책값
   sessionDays: 30
   cookieSecure: true # HTTPS 뒤에서는 반드시 true
+  leaseTtlSecs: 90 # 편집 임대 유지 시간 (ADR-0003). 브라우저는 1/3마다 갱신
   logLevel: info
 
 # DB 연결. 비밀번호는 사용자가 직접 만든 Secret에서만 읽습니다 (차트는 비밀값을 만들지 않음).

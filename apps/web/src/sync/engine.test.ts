@@ -129,6 +129,8 @@ describe('동기화 엔진 (ADR-0003 A안)', () => {
     const a = await device(server, 'laptop', '노트북');
     a.store.notes.push(note('회의', '안건'));
     expect(await a.engine.adoptLocalNotes()).toBe(1);
+    a.engine.markDirty(a.store.notes[0]!);
+    expect(a.engine.status().pending).toBe(1); // 올리기 전에는 '대기'로 표시
     await a.engine.syncOnce();
     expect(a.engine.status()).toMatchObject({ phase: 'idle', pending: 0 });
     const b = await device(server, 'phone', '휴대폰');

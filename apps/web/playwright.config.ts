@@ -19,14 +19,14 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /account\.spec\.ts/,
+      testIgnore: /(account|sync)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: PREVIEW_URL },
     },
     ...(DATABASE_URL
       ? [
           {
             name: 'server',
-            testMatch: /account\.spec\.ts/,
+            testMatch: /(account|sync)\.spec\.ts/,
             use: { ...devices['Desktop Chrome'], baseURL: SERVER_URL },
           },
         ]
@@ -51,6 +51,7 @@ export default defineConfig({
               DATABASE_URL,
               WEB_ROOT: SERVER_WEB_ROOT,
               COOKIE_SECURE: 'false', // http://127.0.0.1 테스트 전용
+              LEASE_TTL_SECS: '5', // 임대 만료·갱신을 빠르게 확인
               RUST_LOG: 'warn',
             },
           },

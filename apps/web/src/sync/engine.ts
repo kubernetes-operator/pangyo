@@ -297,6 +297,9 @@ export class SyncEngine {
   /** 입력할 때마다: 올리기 대상으로 표시하고 잠시 뒤 올리기 */
   markDirty(note: Note): void {
     note.sync = { version: note.sync?.version ?? 0, dirty: true, conflict: note.sync?.conflict ?? null };
+    // 상태 표시를 바로 '올릴 메모 n'으로 (올리기 전에 '동기화됨'으로 보이지 않게)
+    const phase = this.lastStatus.phase === 'error' ? 'idle' : this.lastStatus.phase;
+    this.report(phase, this.lastStatus.message);
     clearTimeout(this.pushTimer);
     this.pushTimer = setTimeout(() => void this.syncOnce(), SYNC_SETTINGS.pushDebounceMs);
   }

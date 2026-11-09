@@ -1,8 +1,12 @@
-// === 화면 연결: v0.1 app.js의 동작을 그대로 옮긴 것 (서버 계정/동기화는 구현하지 않음) ===
+// === 화면 연결: 메모 편집(v0.1 동작) + 계정 + 동기화(로드맵 06, ADR-0003 A안) ===
 import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
+import { accountApi, type Account } from '../account/api';
+import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
+import { deviceLabel, newClientId, syncApi } from '../sync/api';
+import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename } from '../domain/paths';
 import { remember, restore, type HistoryKind } from '../domain/history';
 import {
@@ -36,7 +40,17 @@ const state = {
   lastSaveRequestAt: 0,
   saveTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   saving: Promise.resolve() as Promise<unknown>,
+  // 동기화 (로그인 시)
+  sync: null as SyncEngine | null,
+  syncTimer: undefined as ReturnType<typeof setInterval> | undefined,
+  syncStatus: null as SyncStatus | null,
+  syncBlocked: false, // 이 기기의 메모가 다른 계정에 묶여 있음
+  lease: null as LeaseState | null, // 선택한 메모의 편집 임대 상태
+  leaseRequest: null as Promise<void> | null,
+  lastEditAt: 0, // 마지막 편집 시각 (임대 자동 반납 판단)
 };
+/** 이 탭의 동기화 클라이언트 ID (탭마다 달라서 같은 브라우저의 두 탭도 동시에 편집하지 못함) */
+const CLIENT_ID = newClientId();
 
 function $<T extends HTMLElement = HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -57,6 +71,7 @@ function setLanguage(locale: Locale): void {
   });
   $<HTMLInputElement>('search').placeholder = PLACEHOLDERS[locale].search;
   $<HTMLInputElement>('title').placeholder = PLACEHOLDERS[locale].title;
+  if (repo) renderSyncInfo();
   editor().placeholder = PLACEHOLDERS[locale].editor;
   repo.setMeta('locale', locale).catch(console.error);
 }
@@ -172,6 +187,153 @@ function renderEditor(): void {
   renderTimers();
   $('save-status').textContent = 'LOCAL SAVED';
   renderSessions();
+  setReadOnly(state.lease?.kind === 'denied');
+  renderSyncInfo();
+}
+
+// ---------- 동기화 (로드맵 06) ----------
+
+function setReadOnly(locked: boolean): void {
+  editor().readOnly = locked;
+  $<HTMLInputElement>('title').readOnly = locked;
+  $<HTMLSelectElement>('format').disabled = locked;
+  document.body.classList.toggle('note-locked', locked);
+}
+
+function renderSyncInfo(): void {
+  $('sync-status').textContent = state.sync || state.syncBlocked
+    ? syncStatusText(state.syncStatus, state.locale, state.syncBlocked)
+    : '';
+  renderSyncBanner($('sync-banner'), {
+    note: state.note,
+    lease: state.lease,
+    status: state.syncStatus,
+    locale: state.locale,
+    onRetry: () => void requestEdit(),
+    onResolve: (choice) => void resolveConflict(choice),
+  });
+}
+
+function syncStore(): SyncStore {
+  return {
+    list: () => state.notes,
+    save: (note) => persist(note),
+    add: async (note) => {
+      state.notes.push(note);
+      await repo.saveNote(note);
+    },
+    remove: async (id) => {
+      state.notes = state.notes.filter((n) => n.id !== id);
+      await repo.deleteNote(id);
+      if (state.selectedId === id) {
+        state.selectedId = null;
+        state.note = null;
+        state.lease = null;
+      }
+    },
+    getMeta: (key) => repo.getMeta(key),
+    setMeta: (key, value) => repo.setMeta(key, value),
+    changed: (ids) => {
+      displayTree();
+      const selected = state.note;
+      // 내가 편집 중(임대 보유)인 메모는 입력 위치를 흔들지 않도록 다시 그리지 않음
+      if (selected && ids.includes(selected.id) && state.lease?.kind !== 'held') renderEditor();
+      else if (!selected && ids.length) renderEditor();
+      else renderSyncInfo();
+    },
+  };
+}
+
+/** 로그인 확인 시 동기화 시작 (이미 실행 중이면 무시) */
+async function startSync(account: Account): Promise<void> {
+  if (state.sync || isTauri()) return;
+  const boundTo = await repo.getMeta<string>('syncAccountId');
+  if (boundTo && boundTo !== account.id) {
+    state.syncBlocked = true; // 다른 계정의 메모를 섞지 않음
+    renderSyncInfo();
+    return;
+  }
+  const engine = new SyncEngine(syncApi, syncStore(), {
+    clientId: CLIENT_ID,
+    label: deviceLabel(),
+    onStatus: (status) => {
+      state.syncStatus = status;
+      renderSyncInfo();
+    },
+    onLeaseLost: (noteId) => {
+      if (state.note?.id === noteId) {
+        state.lease = null;
+        void requestEdit(); // 다시 받아 보고, 다른 기기가 가져갔으면 읽기 전용
+      }
+    },
+  });
+  await engine.init();
+  state.sync = engine;
+  state.syncBlocked = false;
+  if (!boundTo) {
+    await repo.setMeta('syncAccountId', account.id);
+    await engine.adoptLocalNotes(); // 이 기기의 기존 메모를 계정에 올림
+  }
+  await engine.syncOnce();
+  state.syncTimer = setInterval(() => void engine.syncOnce(), SETTINGS.syncIntervalMs);
+  renderSyncInfo();
+}
+
+async function stopSync(): Promise<void> {
+  clearInterval(state.syncTimer);
+  const engine = state.sync;
+  state.sync = null;
+  state.syncStatus = null;
+  state.lease = null;
+  setReadOnly(false);
+  await engine?.stop();
+  renderSyncInfo();
+}
+
+/** 편집 시작(에디터/제목에 들어갈 때, 임대 없이 입력할 때): 임대를 받고, 다른 기기가 편집 중이면 읽기 전용 */
+function requestEdit(): Promise<void> {
+  const note = state.note;
+  const engine = state.sync;
+  if (!note || !engine) return Promise.resolve();
+  state.leaseRequest ??= engine
+    .beginEdit(note)
+    .then((lease) => {
+      if (state.note !== note) return void engine.endEdit(note.id);
+      state.lease = lease;
+      state.lastEditAt = Date.now();
+      setReadOnly(lease.kind === 'denied');
+      renderSyncInfo();
+      // 읽기 전용이 되면 상대가 방금 저장한 최신 내용을 바로 가져와 보여줌
+      if (lease.kind === 'denied') void engine.syncOnce();
+    })
+    .catch(console.error)
+    .finally(() => {
+      state.leaseRequest = null;
+    });
+  return state.leaseRequest;
+}
+
+function releaseEdit(keepalive = false): void {
+  const id = state.note?.id;
+  state.lease = null;
+  if (id) void state.sync?.endEdit(id, keepalive);
+}
+
+/** 내용이 바뀔 때마다: 동기화 대상 표시 + 임대가 없으면 받기 */
+function noteChanged(note: Note): void {
+  if (!state.sync) return;
+  state.lastEditAt = Date.now();
+  state.sync.markDirty(note);
+  if (note.sync && note.sync.version > 0 && !state.sync.isHolding(note.id)) void requestEdit();
+  renderSyncInfo();
+}
+
+async function resolveConflict(choice: ConflictChoice): Promise<void> {
+  const note = state.note;
+  if (!note || !state.sync) return;
+  await state.sync.resolveConflict(note, choice);
+  renderEditor();
+  displayTree();
 }
 
 async function persist(note: Note): Promise<void> {
@@ -254,6 +416,7 @@ function applyEdit(field: 'title' | 'content', value: string): void {
   note[field] = value;
   note.modifiedAt = nowISO();
   editActivity();
+  noteChanged(note);
   scheduleSave();
   displayTree();
 }
@@ -263,6 +426,7 @@ function restoreHistory(kind: HistoryKind): void {
   if (!note || !restore(note, kind, SETTINGS.historyLimit)) return;
   note.modifiedAt = nowISO();
   editActivity();
+  noteChanged(note);
   scheduleSave();
   renderEditor();
   displayTree();
@@ -270,6 +434,8 @@ function restoreHistory(kind: HistoryKind): void {
 
 async function selectNote(id: string): Promise<void> {
   if (id === state.selectedId) return;
+  releaseEdit();
+  setReadOnly(false);
   endSession();
   await flushSave();
   state.selectedId = id;
@@ -303,6 +469,7 @@ async function addNote(title: string, content = '', format: NoteFormat = 'md'): 
     undo: [],
     redo: [],
   };
+  state.sync?.markDirty(note); // 로그인 중이면 새 메모도 올리기 대상
   await repo.saveNote(note);
   state.notes.push(note);
   await selectNote(note.id);
@@ -349,6 +516,11 @@ function updateTimer(): void {
     state.lastOpenTick = current;
     if (current - state.lastSaveRequestAt >= SETTINGS.sessionSaveEveryMs) scheduleSave();
   }
+  // 오래 입력하지 않으면 임대를 반납해 다른 기기가 편집할 수 있게 (다시 입력하면 자동으로 다시 받음)
+  if (state.lease?.kind === 'held' && Date.now() - state.lastEditAt > SETTINGS.leaseIdleReleaseMs) {
+    releaseEdit();
+    renderSyncInfo();
+  }
   renderTimers();
 }
 
@@ -379,6 +551,7 @@ function bindEvents(): void {
     remember(note, SETTINGS.historyLimit);
     note.format = (e.target as HTMLSelectElement).value === 'txt' ? 'txt' : 'md';
     note.modifiedAt = nowISO();
+    noteChanged(note);
     scheduleSave();
     renderEditor();
     displayTree();
@@ -392,9 +565,16 @@ function bindEvents(): void {
   if (isTauri()) {
     accountButton.hidden = true;
   } else {
-    const panel = createAccountPanel($<HTMLDialogElement>('account-dialog'), () => state.locale);
+    const panel = createAccountPanel($<HTMLDialogElement>('account-dialog'), () => state.locale, {
+      onSignedIn: (account) => void startSync(account),
+      onSignedOut: () => void stopSync(),
+    });
     accountButton.onclick = () => void panel.open();
   }
+  // 편집 시작 = 에디터/제목에 들어갈 때 임대 요청 (열기만 해서는 잠그지 않음)
+  editor().addEventListener('focus', () => void requestEdit());
+  $<HTMLInputElement>('title').addEventListener('focus', () => void requestEdit());
+  window.addEventListener('online', () => void state.sync?.syncOnce());
   $('undo-btn').onclick = () => restoreHistory('undo');
   $('redo-btn').onclick = () => restoreHistory('redo');
   $('indent-btn').onclick = () => indentSelection();
@@ -432,14 +612,17 @@ function bindEvents(): void {
   // 창을 숨기면 세션을 닫고, 다시 보이면 새 세션(재개)을 시작합니다.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
+      releaseEdit();
       endSession();
       void flushSave();
     } else {
       startSession();
+      void state.sync?.syncOnce();
     }
   });
   // 종료 직전 저장은 최선 노력. 네이티브 어댑터는 내구성 있는 저널을 사용할 예정.
   window.addEventListener('pagehide', () => {
+    releaseEdit(true); // keepalive: 탭을 닫아도 반납 요청이 전달되게
     endSession();
     void flushSave();
   });
@@ -449,7 +632,7 @@ function bindEvents(): void {
 
 export async function bootstrap(repository: NoteRepository): Promise<void> {
   repo = repository;
-  $('hint').textContent = `Local-first · ${repo.describe()} · Sync / login not implemented`;
+  $('hint').textContent = `Local-first · ${repo.describe()}`;
   const locale = await repo.getMeta<string>('locale');
   state.notes = await repo.listNotes();
   state.folders = await repo.listFolders();
@@ -468,6 +651,13 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   bindEvents();
   setInterval(updateTimer, SETTINGS.timerTickMs);
   setInterval(renderClock, SETTINGS.clockTickMs);
+  // 이미 로그인한 브라우저면 바로 동기화 (서버가 없으면 조용히 로컬 전용)
+  if (!isTauri()) {
+    accountApi
+      .me()
+      .then((account) => account && startSync(account))
+      .catch(() => undefined);
+  }
 }
 
 export function reportStorageFailure(e: unknown): void {

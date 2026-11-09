@@ -70,7 +70,14 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => Locale) {
+export interface AccountHooks {
+  /** 로그인 상태가 확인될 때마다 (가입·로그인·화면 열기) — 동기화 시작 */
+  onSignedIn?: (account: Account) => void;
+  /** 로그아웃 직후 — 동기화 중지 */
+  onSignedOut?: () => void;
+}
+
+export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => Locale, hooks: AccountHooks = {}) {
   let mode: Mode = 'login';
   const t = (key: string) => TEXT[getLocale()][key] ?? key;
   const body = () => dialog.querySelector<HTMLElement>('#account-body')!;
@@ -161,12 +168,14 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
   }
 
   async function renderAccount(account: Account) {
+    hooks.onSignedIn?.(account);
     const percent = account.quotaBytes > 0 ? Math.min(100, (account.usedBytes / account.quotaBytes) * 100) : 0;
     const meter = el('meter', { min: 0, max: account.quotaBytes, value: account.usedBytes });
     const codeBox = el('p', { id: 'pairing-code', className: 'pairing-code' });
     const deviceList = el('ul', { className: 'device-list', id: 'device-list' });
     const logout = el('button', { type: 'button', id: 'account-logout' }, t('logout'));
     logout.onclick = async () => {
+      hooks.onSignedOut?.();
       await accountApi.logout().catch(() => undefined);
       mode = 'login';
       await render();

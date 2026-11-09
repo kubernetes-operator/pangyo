@@ -11,7 +11,8 @@
 | `crates/core/src/lib.rs` 상단 상수 | Rust 공통 정책 값 (폴더 깊이, 길이 제한) | 예 | Rust core/BSD |
 | `packages/protocol/openapi.json` | API 계약 원본 (구현/계획 상태 포함) | 예 | 서버 계약 테스트 |
 | `crates/server/src/lib.rs` 상단 상수 | 서버 바인드 기본값, 타임아웃, 본문 제한, CSP (`API_BIND_ADDRESS`, `RUST_LOG` 환경변수) | 예 | API 서버 |
-| `crates/server/src/config.rs` | 계정 설정 환경변수: `DATABASE_URL`, `MAX_ACCOUNTS`, `FREE_STORAGE_MB`, `REGISTRATION`, `SESSION_DAYS`, `COOKIE_SECURE`, `WEB_ROOT` | 예(기본값만) | API 서버, Helm `app.*` |
+| `crates/server/src/config.rs` | 계정·동기화 설정 환경변수: `DATABASE_URL`, `MAX_ACCOUNTS`, `FREE_STORAGE_MB`, `REGISTRATION`, `SESSION_DAYS`, `COOKIE_SECURE`, `WEB_ROOT`, `LEASE_TTL_SECS` |
+| `apps/web/src/sync/engine.ts` 상단 `SYNC_SETTINGS`, `apps/web/src/settings.ts` | 동기화 주기(20초), 올리기 대기, 임대 갱신 비율, 입력 없을 때 임대 반납(2분) | 예 | 웹 | 예(기본값만) | API 서버, Helm `app.*` |
 | Kubernetes Secret `memonest-db` | DB 비밀번호 (키 `password`) | **아니요 — 사용자가 직접 생성** | Helm `database.existingSecret` |
 | `crates/server/Dockerfile`, `.dockerignore` | API 이미지 빌드 (허용 목록 컨텍스트) | 예 | `make image` |
 | `apps/native/src-tauri/src/lib.rs` 상단 상수 | 데스크톱 메모 폴더(`MEMONEST_NOTES_DIR`), 인덱스 파일 이름, 진단 옵션(`MEMONEST_WEBVIEW_CONSOLE`) | 예 | 데스크톱 앱 |

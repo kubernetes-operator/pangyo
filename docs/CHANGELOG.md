@@ -78,3 +78,13 @@
 - 첫 배포(2026-11-07) 실패 대응: ① Postgres 첫 initdb가 NFS에서 30초를 넘겨 liveness가 재시작 → 데이터 폴더 손상(`global/pg_filenode.map` 없음), ② API가 시작 시 DB 연결 실패로 종료 → CrashLoop, ③ `helm --wait` 10분 초과로 릴리스 failed. 수정: Postgres `startupProbe`(최대 10분)+liveness는 시작 후, 종료 유예 120초 / API는 DB를 백그라운드 재시도로 연결(그동안 `/healthz` 200, `/readyz` 503 `connecting`, 계정 API 503 `database_connecting`). 테스트 추가(DB보다 서버가 먼저 떠도 정상).
 - 두 번째 배포 시도(2026-11-09): 이 클러스터 NFS에서 initdb가 10분을 넘겨(bootstrap만 5분 20초) 시작 검사 한도에 걸림 → 공식 이미지의 초기화 후 단계(DB 생성·pg_hba)가 빠진 채 남음. 수정: `POSTGRES_INITDB_ARGS=--no-sync`(첫 초기화의 fsync만 생략), 시작 대기 30분.
 - **배포 완료(2026-11-09)**: `memonest` 네임스페이스, 이미지 `sha-336230a`, Helm 릴리스 `memonest-api` rev 1 deployed. Postgres 초기화 약 10분(재시작 0회). 도메인 확인: `/readyz` database ok, 웹 앱·manifest·sw.js 200, 보안 헤더, 가입 검증/CSRF/로그인 실패/비로그인 401 정상(운영 DB에 테스트 데이터 생성 안 함). Cloudflare 봇 탐지 스크립트가 CSP에 막혀 콘솔 경고(동작 영향 없음).
+
+## Unreleased — 로드맵 06단계: 메모 동기화 + 편집 임대 (ADR-0003 A안, `feature/roadmap06-sync`)
+- 결정: 사용자 A안 승인(2026-11-09) → `docs/decisions/ADR-0003.md`, `docs/07_LOCK_APPROVAL.md` 상태 갱신.
+- 서버: `db/postgres/003_notes_sync.sql`(본문·폴더·묘비·변경 커서·lease_epoch, note_leases, 대소문자 무시 경로 유일성), 변경 목록/저장/삭제/임대 API, 용량 반영, memonest-core 경로 규칙 공유, 오류 `details`.
+- 웹: `src/sync/engine.ts`(가져오기·올리기·임대 획득/갱신/반납·오프라인 초안·충돌 보관/해결), `src/sync/api.ts`, `src/ui/sync-view.ts`(상단 상태, 읽기 전용/충돌/초안/오류 알림), 로그인 시 자동 동기화·첫 연결 시 기존 메모 업로드·다른 계정 메모 섞임 방지, 입력 2분 없으면 임대 반납, 탭 닫을 때 keepalive 반납.
+- 데스크톱/코어: 저장소 `deleteNote`, 동기화 상태 보존(`db/sqlite/004_sync_state.sql`). 데스크톱 동기화 연결은 후속.
+- 발견·수정: ① 입력 직후 상태가 '동기화됨'으로 남던 문제 → 즉시 '올릴 메모 n' ② 새 메모가 동기화 대상에서 빠지던 문제 ③ 읽기 전용 화면이 최신 내용을 늦게 보이던 문제 → 즉시 가져오기 ④ 숨긴 알림이 빈 상자로 보이던 CSS 버그(`display:grid`가 `hidden`을 덮음).
+- DB 점검(2026-11-09, 운영): 재시작 0, 마이그레이션 2/2 성공, fsync/동기 커밋/전체 페이지 쓰기 on, 인덱스 184개 정상, 교착 0, 카탈로그 전수 읽기 정상. 04:02 NAS 순간 지연으로 pg_isready 1초 초과 1회(API 영향 없음) → readiness timeout 5초. **NAS 공유 90% 사용(1.3T 중 1.2T, PVC 39개 공유) — 용량 확보 필요.**
+- 테스트: 서버 동기화 5개 + 계정 9개, 웹 단위 76개(엔진 8개), E2E 13개(실서버 두 브라우저 동기화 1개, 3회 반복 통과).
+- 위험: 본문을 Postgres에 저장(S3 전) — NAS 성능·용량 영향. 편집 세션·Undo는 기기별(동기화 안 함). 같은 브라우저의 두 탭도 서로 다른 기기로 취급(동시 편집 불가). 웹에 메모 삭제 기능은 아직 없음(서버·동기화는 지원).

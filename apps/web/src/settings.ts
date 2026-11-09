@@ -11,6 +11,8 @@ export const SETTINGS = Object.freeze({
   sessionListMax: 20, // 화면에 보여줄 최근 편집 세션 수
   indentation: '  ', // Markdown 블록 들여쓰기: 공백 두 칸
   smallScreenQuery: '(max-width:760px)', // 이 폭 이하는 단일 화면으로 취급
+  syncIntervalMs: 20_000, // 로그인 상태에서 주기적 동기화 간격
+  leaseIdleReleaseMs: 120_000, // 이 시간 동안 입력이 없으면 편집 임대를 반납 (다른 기기가 편집할 수 있게)
 });
 
 export type Locale = 'ko' | 'en';
