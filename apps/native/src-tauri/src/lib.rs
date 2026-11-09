@@ -52,6 +52,11 @@ fn save_note(state: State<'_, AppState>, note: NoteRecord) -> CommandResult<()> 
 }
 
 #[tauri::command]
+fn delete_note(state: State<'_, AppState>, id: String) -> CommandResult<()> {
+    with_workspace(&state, |ws| ws.delete_note(&id))
+}
+
+#[tauri::command]
 fn list_folders(state: State<'_, AppState>) -> CommandResult<Vec<String>> {
     with_workspace(&state, |ws| ws.list_folders())
 }
@@ -116,6 +121,7 @@ pub fn run() {
             notes_root,
             list_notes,
             save_note,
+            delete_note,
             list_folders,
             create_folder,
             get_meta,

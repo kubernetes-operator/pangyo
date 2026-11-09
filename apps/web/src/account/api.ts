@@ -40,6 +40,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -48,7 +49,12 @@ export class ApiError extends Error {
 /** 서버에 연결할 수 없음 (오프라인, 서버 없는 로컬 실행 등) */
 export class ServerUnavailable extends Error {}
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options: { keepalive?: boolean } = {},
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
@@ -63,6 +69,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
+      keepalive: options.keepalive, // 페이지를 닫을 때 임대 반납 요청이 끝까지 가도록
     });
   } catch {
     throw new ServerUnavailable('server unreachable');
@@ -74,11 +81,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const data: unknown = isJson ? await response.json() : undefined;
   if (!isJson) throw new ServerUnavailable(`unexpected response ${response.status}`); // 정적 서버 등
   if (!response.ok) {
-    const err = data as { error?: string; message?: string };
+    const err = data as { error?: string; message?: string; details?: Record<string, unknown> };
     if (['database_not_configured', 'database_connecting', 'not_implemented'].includes(err.error ?? '')) {
       throw new ServerUnavailable(err.error);
     }
-    throw new ApiError(response.status, err.error ?? 'unknown', err.message ?? `HTTP ${response.status}`);
+    throw new ApiError(response.status, err.error ?? 'unknown', err.message ?? `HTTP ${response.status}`, err.details);
   }
   return data as T;
 }

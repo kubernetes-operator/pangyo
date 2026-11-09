@@ -45,6 +45,9 @@ function fakeTauriBackend() {
         notes.set(note.id, structuredClone(note));
         return null;
       }
+      case 'delete_note':
+        notes.delete(a.id as string);
+        return null;
       case 'list_folders':
         return [...folders].sort();
       case 'create_folder':
@@ -93,6 +96,22 @@ describe.each([
     const matches = (await repo.listNotes()).filter((n) => n.id === id);
     expect(matches).toHaveLength(1);
     expect(matches[0]).toMatchObject({ title: '회의록', content: '변경' });
+  });
+
+  it('삭제하면 목록에서 사라짐', async () => {
+    const repo = await open();
+    const id = crypto.randomUUID();
+    await repo.saveNote(sampleNote(id));
+    await repo.deleteNote(id);
+    expect((await repo.listNotes()).some((n) => n.id === id)).toBe(false);
+  });
+
+  it('동기화 상태(sync)를 보존', async () => {
+    const repo = await open();
+    const id = crypto.randomUUID();
+    const note = { ...sampleNote(id), sync: { version: 3, dirty: true, conflict: null } };
+    await repo.saveNote(note);
+    expect((await repo.listNotes()).find((n) => n.id === id)?.sync).toEqual(note.sync);
   });
 
   it('폴더와 메타 값', async () => {

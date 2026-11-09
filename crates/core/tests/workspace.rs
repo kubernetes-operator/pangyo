@@ -51,6 +51,7 @@ fn note(id: &str, folder: &str, title: &str, content: &str) -> NoteRecord {
             format: NoteFormat::Md,
         }],
         redo: vec![],
+        sync: None,
     }
 }
 
@@ -165,6 +166,20 @@ fn sessions_are_replaced_not_duplicated() {
 }
 
 #[test]
+fn delete_note_removes_file_and_index_and_keeps_sync_state() {
+    let f = fixture();
+    let mut ws = f.open();
+    let mut n = note(ID_A, "", "지울것", "x");
+    n.sync = Some(serde_json::json!({ "version": 2, "dirty": true }));
+    ws.save_note(&n).unwrap();
+    assert_eq!(ws.list_notes().unwrap()[0].sync, n.sync, "동기화 상태 보존");
+    ws.delete_note(ID_A).unwrap();
+    assert!(!f.notes.join("지울것.md").exists());
+    assert!(ws.list_notes().unwrap().is_empty());
+    ws.delete_note(ID_A).unwrap(); // 두 번째 삭제도 성공
+}
+
+#[test]
 fn meta_values_and_folders() {
     let f = fixture();
     let ws = f.open();
@@ -203,7 +218,7 @@ fn migrations_are_idempotent() {
     let version: i64 = db
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 3);
+    assert_eq!(version, 4);
 }
 
 fn uuid_like(s: &str) -> bool {

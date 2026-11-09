@@ -67,6 +67,9 @@ export const indexedDbRepository: NoteRepository = {
   async saveNote(note) {
     await query(STORES.notes, 'readwrite', (s) => s.put(structuredClone(note)));
   },
+  async deleteNote(id) {
+    await query(STORES.notes, 'readwrite', (s) => s.delete(id));
+  },
   listFolders: () => query<FolderRecord[]>(STORES.folders, 'readonly', (s) => s.getAll()),
   async saveFolder(path) {
     await query(STORES.folders, 'readwrite', (s) => s.put({ path }));

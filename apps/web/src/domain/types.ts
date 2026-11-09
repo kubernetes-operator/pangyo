@@ -22,6 +22,25 @@ export interface EditSession {
   openMs: number; // 열어둔 시간: 메모가 열려 있고 창이 화면에 보이는 시간 (v0.1 레코드에는 없음 → 0)
 }
 
+/** 서버에서 받은 메모 (충돌 검토용 사본에도 사용) */
+export interface ServerCopy extends Snapshot {
+  version: number;
+  folder: string;
+  modifiedAt: string;
+  deleted: boolean;
+}
+
+/**
+ * 동기화 상태 (로드맵 06, ADR-0003). 로그인해서 동기화한 적이 없으면 없음.
+ * 편집 세션·Undo 기록은 기기별 정보라 동기화하지 않습니다.
+ */
+export interface NoteSync {
+  version: number; // 이 사본이 기반으로 한 서버 버전 (0 = 아직 올리지 않음)
+  dirty: boolean; // 올리지 않은 로컬 변경 (오프라인 초안 포함)
+  conflict?: ServerCopy | null; // 로컬 변경 중 서버에서도 바뀐 경우: 사용자가 고를 때까지 보관
+  error?: string | null; // 서버가 거부한 이유 (경로 중복, 용량 등). 다시 편집하면 지움
+}
+
 export interface Note extends Snapshot {
   id: string; // UUID, 경로가 바뀌어도 불변
   folder: string; // '' = 루트, 최대 2단계 'A/B'
@@ -30,6 +49,7 @@ export interface Note extends Snapshot {
   sessions: EditSession[];
   undo: Snapshot[];
   redo: Snapshot[];
+  sync?: NoteSync;
 }
 
 export interface FolderRecord {
@@ -65,5 +85,6 @@ export function normalizeNote(raw: Partial<Note> & { id: string }): Note {
     sessions: Array.isArray(raw.sessions) ? raw.sessions.map(normalizeSession) : [],
     undo: Array.isArray(raw.undo) ? raw.undo : [],
     redo: Array.isArray(raw.redo) ? raw.redo : [],
+    ...(raw.sync && typeof raw.sync.version === 'number' ? { sync: { ...raw.sync, dirty: !!raw.sync.dirty } } : {}),
   };
 }

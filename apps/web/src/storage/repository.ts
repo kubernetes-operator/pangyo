@@ -13,6 +13,8 @@ export interface NoteRepository {
   listNotes(): Promise<Note[]>;
   /** 새 메모 저장 또는 기존 메모 갱신. 파일 저장소에서는 제목/폴더/형식이 바뀌면 파일 이름도 바뀝니다. */
   saveNote(note: Note): Promise<void>;
+  /** 메모 삭제 (다른 기기에서 삭제된 메모를 동기화로 반영할 때) */
+  deleteNote(id: string): Promise<void>;
   listFolders(): Promise<FolderRecord[]>;
   /** 정규화된 폴더 경로 하나를 저장 (상위 폴더는 호출 쪽에서 순서대로 저장) */
   saveFolder(path: string): Promise<void>;

@@ -9,6 +9,7 @@ export const COMMANDS = {
   root: 'notes_root',
   listNotes: 'list_notes',
   saveNote: 'save_note',
+  deleteNote: 'delete_note',
   listFolders: 'list_folders',
   createFolder: 'create_folder',
   getMeta: 'get_meta',
@@ -26,6 +27,9 @@ export async function createTauriRepository(): Promise<NoteRepository> {
     },
     async saveNote(note) {
       await invoke(COMMANDS.saveNote, { note });
+    },
+    async deleteNote(id) {
+      await invoke(COMMANDS.deleteNote, { id });
     },
     async listFolders() {
       const paths = await invoke<string[]>(COMMANDS.listFolders);

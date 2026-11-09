@@ -27,10 +27,11 @@ use crate::{
 };
 
 // === 0. 인덱스 마이그레이션: db/sqlite/*.sql 을 순서대로 적용 (PRAGMA user_version = 적용 개수) ===
-const MIGRATIONS: [&str; 3] = [
+const MIGRATIONS: [&str; 4] = [
     include_str!("../../../db/sqlite/001_initial.sql"),
     include_str!("../../../db/sqlite/002_session_open_time.sql"),
     include_str!("../../../db/sqlite/003_workspace.sql"),
+    include_str!("../../../db/sqlite/004_sync_state.sql"),
 ];
 
 /// Undo/Redo 한 칸 (웹과 같은 전체 스냅샷)
@@ -73,6 +74,9 @@ pub struct NoteRecord {
     pub undo: Vec<Snapshot>,
     #[serde(default)]
     pub redo: Vec<Snapshot>,
+    /// 동기화 상태 (웹 `Note.sync`와 같은 JSON). 데스크톱 동기화 전까지는 보관만 합니다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync: Option<serde_json::Value>,
 }
 
 /// 인덱스의 notes 행
@@ -82,6 +86,7 @@ struct IndexRow {
     version: i64,
     created_at: String,
     modified_at: String,
+    sync_json: Option<String>,
 }
 
 pub struct Workspace {
@@ -143,6 +148,7 @@ impl Workspace {
                         version: 1,
                         created_at: time.clone(),
                         modified_at: time,
+                        sync_json: None,
                     };
                     tx.execute(
                         "INSERT INTO notes (id, path, format, content_hash, version, created_at, modified_at)
@@ -164,6 +170,11 @@ impl Workspace {
                 modified_at: row.modified_at,
                 undo,
                 redo,
+                sync: row
+                    .sync_json
+                    .as_deref()
+                    .map(serde_json::from_str)
+                    .transpose()?,
             });
         }
         // 디스크에서 사라진 파일 → 인덱스에서 제거 (세션/Undo는 CASCADE)
@@ -230,11 +241,13 @@ impl Workspace {
             None => (1, note.created_at.clone()),
         };
         tx.execute(
-            "INSERT INTO notes (id, path, format, content_hash, version, created_at, modified_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO notes (id, path, format, content_hash, version, created_at, modified_at, sync_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET path = excluded.path, format = excluded.format,
-               content_hash = excluded.content_hash, version = excluded.version, modified_at = excluded.modified_at",
-            params![note.id, target_path, note.format.extension(), hash, version, created_at, note.modified_at],
+               content_hash = excluded.content_hash, version = excluded.version, modified_at = excluded.modified_at,
+               sync_json = excluded.sync_json",
+            params![note.id, target_path, note.format.extension(), hash, version, created_at, note.modified_at,
+                    note.sync.as_ref().map(serde_json::to_string).transpose()?],
         )?;
         tx.execute(
             "DELETE FROM edit_sessions WHERE note_id = ?1",
@@ -255,6 +268,22 @@ impl Workspace {
             params![note.id, serde_json::to_string(&note.undo)?, serde_json::to_string(&note.redo)?],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    /// 메모 파일과 인덱스 기록을 지웁니다 (없으면 그대로 성공).
+    pub fn delete_note(&mut self, id: &str) -> Result<()> {
+        let path: Option<String> = self
+            .db
+            .query_row("SELECT path FROM notes WHERE id = ?1", params![id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if let Some(path) = path {
+            self.store.remove(&NoteLocation::from_relative(&path)?)?;
+            self.db
+                .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
+        }
         Ok(())
     }
 
@@ -298,8 +327,9 @@ fn migrate(db: &Connection) -> Result<()> {
 }
 
 fn load_index(tx: &Transaction<'_>) -> Result<HashMap<String, IndexRow>> {
-    let mut stmt =
-        tx.prepare("SELECT path, id, content_hash, version, created_at, modified_at FROM notes")?;
+    let mut stmt = tx.prepare(
+        "SELECT path, id, content_hash, version, created_at, modified_at, sync_json FROM notes",
+    )?;
     let rows = stmt.query_map([], |r| {
         Ok((
             r.get::<_, String>(0)?,
@@ -309,6 +339,7 @@ fn load_index(tx: &Transaction<'_>) -> Result<HashMap<String, IndexRow>> {
                 version: r.get(3)?,
                 created_at: r.get(4)?,
                 modified_at: r.get(5)?,
+                sync_json: r.get(6)?,
             },
         ))
     })?;
