@@ -24,7 +24,7 @@
 ## 현재 코드 (로드맵 08, 2026-11-09)
 - `apps/bsd`: **전체 화면 TUI** (ratatui). 단일 화면 F6 전환/넓은 터미널 두 칸, 폴더 2단계, md/txt, 한글 폭, Undo 250, 5초 자동 저장, 상단 기기 상태. 사용법·검증 범위: `apps/bsd/README.md`.
 - 키오스크: `apps/bsd/kiosk/` — 전용 계정 + ttyv0 자동 로그인 + 재실행 실행기, 멱등 설치 스크립트.
-- 검증: `scripts/bsd-vm-verify.py` — FreeBSD 15.1-RELEASE arm64 공식 VM 이미지(SHA256 검증)를 QEMU로 실행해 빌드·테스트·TUI 실행·키오스크 설치 확인. **실기기·한글 입력기·2화면은 미검증.**
+- 검증: `scripts/bsd-vm-verify.py` — FreeBSD 15.1-RELEASE arm64 공식 VM 이미지(SHA256 검증)를 QEMU로 실행해 빌드·테스트·TUI 실행·키오스크 설치 확인 — 2026-11-09 **8/8 통과**. **실기기·한글 입력기·2화면은 미검증.**
 
 ## 이전 기록
 - `apps/bsd`는 줄 단위 **콘솔 편집기**. 경로 규칙과 파일 저장은 `crates/core`를 공유(웹과 같은 규칙).

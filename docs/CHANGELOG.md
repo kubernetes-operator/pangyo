@@ -115,5 +115,6 @@
 - 검증 도구: `scripts/bsd-vm-verify.py` — FreeBSD 15.1-RELEASE arm64 공식 이미지(SHA256 확인)를 QEMU(TCG)로 부팅, 시리얼 콘솔 자동 조작으로 pkg rust 설치·`cargo test`·release 빌드·pty에서 TUI 키 입력→저장·키오스크 설치 확인. 원본 이미지 불변(오버레이), `--reuse`.
 - 개발 서버: QEMU 10.2 설치(새 패키지 19개만, 기존 패키지 업그레이드 없음, 설정 유지 옵션).
 - CI: GitHub 러너 Ubuntu 26 전환으로 linuxdeploy(FUSE2 필요) 실행 실패 → `APPIMAGE_EXTRACT_AND_RUN=1`; Android 최신 NDK 30의 32비트 링커 없음 → 러너 LTS NDK, Gradle 다운로드 시간 초과 → 캐시·재시도; 번들 도구 504 → 재시도.
-- 테스트: TUI 16개(Linux).
+- 테스트: TUI 16개(Linux). **FreeBSD 15.1-RELEASE arm64 VM(QEMU, cortex-a72) 검증 통과 8/8** — arch(aarch64), pkg rust 설치, 소스 전송, `cargo test` 16개 통과, release 빌드(ELF aarch64 FreeBSD), `--version`, TUI 키 입력(F2→새 메모→"안녕 FreeBSD"→Ctrl+S→Ctrl+Q) 저장 확인, 키오스크 설치(사용자·셸 등록·gettytab·ttyv0 자동 로그인, 2회 실행 멱등). 총 3.9분(이미지 재사용).
+- 검증 중 수정: `-cpu max`는 UEFI 단계가 매우 느림 → cortex-a72, FreeBSD 15.0 pkg rust가 15.1 libc 요구 → 15.1 이미지, 파이프가 실패를 가림 → `set -o pipefail`, 시리얼 콘솔 한 줄 입력 한도 초과 → 키오스크 확인을 `apps/bsd/vm/kiosk-check.sh`로 분리.
 - 미검증(실기기 필요): 보드·2화면·Wi-Fi/BT 칩셋 실제 출력·배터리 센서, **콘솔 한글 입력기 없음**(vt), 한글 글꼴.

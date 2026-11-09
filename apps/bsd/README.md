@@ -26,6 +26,7 @@ sh apps/bsd/kiosk/install.sh target/release/memonest-bsd             # 적용 (�
 ## 검증
 - `cargo test -p memonest-bsd`: 편집(한글 폭·Undo·들여쓰기), 앱 키 시나리오(폴더/메모/저장/자동 저장/종료 경고), 화면 렌더링(두 칸/한 칸), 기기 상태 출력 해석
 - `python3 scripts/bsd-vm-verify.py [--reuse]`: **FreeBSD 15.1 arm64 VM(QEMU)** 에서 실제 빌드·테스트·TUI 키 입력→저장·키오스크 설치 확인
+  - 최근 결과(2026-11-09): **8/8 통과** (arch·pkg rust·소스·cargo test 16개·release 빌드·버전·TUI 한글 입력 저장·키오스크 멱등 설치)
 
 ## 아직 검증하지 못한 것 (실기기 필요)
 - 보드/디스플레이(1·2화면), Wi-Fi·BT 칩셋별 출력, 배터리 센서 — `device.rs` 해석은 표준 출력 예시로만 테스트
