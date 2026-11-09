@@ -144,6 +144,22 @@ export const searchApi = {
     request<SearchHit[]>('GET', `/notes/${encodeURIComponent(id)}/similar?limit=${limit}`),
 };
 
+export interface DownloadFile {
+  id: string;
+  platform: string;
+  label: string;
+  fileName: string;
+  size: number;
+  sha256: string;
+}
+
+/** 설치 파일: 목록 + 누를 때마다 짧게 유효한 일회성 주소 발급 (실제 저장 위치는 드러나지 않음) */
+export const downloadApi = {
+  list: () => request<{ version: string; files: DownloadFile[] }>('GET', '/downloads'),
+  link: (id: string) =>
+    request<{ url: string; expiresAt: string }>('POST', `/downloads/${encodeURIComponent(id)}/link`),
+};
+
 /** 104857600 → '100 MB' */
 export function formatBytes(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

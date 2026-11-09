@@ -118,3 +118,11 @@
 - 테스트: TUI 16개(Linux). **FreeBSD 15.1-RELEASE arm64 VM(QEMU, cortex-a72) 검증 통과 8/8** — arch(aarch64), pkg rust 설치, 소스 전송, `cargo test` 16개 통과, release 빌드(ELF aarch64 FreeBSD), `--version`, TUI 키 입력(F2→새 메모→"안녕 FreeBSD"→Ctrl+S→Ctrl+Q) 저장 확인, 키오스크 설치(사용자·셸 등록·gettytab·ttyv0 자동 로그인, 2회 실행 멱등). 총 3.9분(이미지 재사용).
 - 검증 중 수정: `-cpu max`는 UEFI 단계가 매우 느림 → cortex-a72, FreeBSD 15.0 pkg rust가 15.1 libc 요구 → 15.1 이미지, 파이프가 실패를 가림 → `set -o pipefail`, 시리얼 콘솔 한 줄 입력 한도 초과 → 키오스크 확인을 `apps/bsd/vm/kiosk-check.sh`로 분리.
 - 미검증(실기기 필요): 보드·2화면·Wi-Fi/BT 칩셋 실제 출력·배터리 센서, **콘솔 한글 입력기 없음**(vt), 한글 글꼴.
+
+## Unreleased — 설치 파일 배포 서비스 (`feature/downloads-service`, 2026-11-09 사용자 요청)
+- 요구: 설치 파일을 사용자 Kubernetes로 외부 제공, 직접 주소가 드러나지 않게.
+- 서버: `GET /api/v1/downloads`(로그인 사용자, 저장 경로 비노출), `POST /api/v1/downloads/{id}/link`(5분 유효 임의 토큰, 해시만 저장 `db/postgres/006_download_links.sql`), `GET /dl/{token}`(스트리밍, 응답 시간 제한 없음 — 15초 제한을 API 경로에만 적용하도록 분리). 목록 파일 경로 검증(저장소 밖 금지). 자동화 토큰으로는 불가.
+- 웹: 계정 화면 '설치 파일' (누를 때 주소 발급 → 바로 다운로드, 화면에 주소 없음).
+- 배포: Helm `downloads.*` PVC(2Gi RWX, keep), API 읽기 전용 마운트 / `scripts/publish-downloads.sh`(gh 결과물 → 임시 Pod 복사 → 목록 원자 교체 → 최근 2개 버전 보관).
+- 테스트: 서버 3개(경로 비노출·토큰 링크·재다운로드·잘못된 토큰·저장소 밖 경로 제외·비로그인/자동화 토큰 거부·미설정 503), 계약 28 operation, E2E 1개(브라우저 다운로드 파일 내용 확인).
+- 위험: NAS(90%) 사용, 링크는 5분 안에 공유되면 다른 사람도 받을 수 있음(로그인 사용자만 발급). iOS는 시뮬레이터 빌드라 제외.

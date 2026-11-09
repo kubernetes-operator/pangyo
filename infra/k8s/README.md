@@ -23,6 +23,11 @@ helm upgrade --install memonest-api infra/k8s/helm/memonest \
 - `./scripts/deploy.sh`는 위 명령을 `.env` 값으로 실행하며 실행 전 `DEPLOY` 입력을 요구합니다.
 - 확인: `kubectl -n <namespace> get pods,svc,pvc,httproute`, `curl https://<도메인>/readyz` → `"database":"ok"`.
 
+## 설치 파일 배포
+- 웹 앱 → 계정 → **설치 파일**: 로그인 사용자에게 목록 표시, **받기**를 누르면 5분 유효한 임의 주소(`/dl/<토큰>`)로 내려받음. 실제 저장 위치·버전 폴더는 드러나지 않음.
+- 저장: PVC `<릴리스>-downloads`(2Gi, RWX, uninstall 후에도 유지), API는 읽기 전용 마운트.
+- 게시(운영 변경, 승인 후): `./scripts/publish-downloads.sh <package 워크플로 실행 ID>` — GitHub 결과물 받기 → 임시 Pod로 복사 → 목록 파일은 마지막에 교체(받는 중인 사용자 영향 없음) → 최근 2개 버전만 보관.
+
 ## DB 백업과 복원
 - **자동 백업**: CronJob `<릴리스>-backup`이 매일 03:00(Asia/Seoul) `pg_dump -Fc`로 백업 PVC `<릴리스>-backup`에 저장하고 14일 보관(최신 1개는 항상 유지). 같은 Job이 **매번 임시 Postgres(노드 로컬 디스크)에 실제로 복원해 테이블·마이그레이션을 검사** — 복원이 안 되는 백업은 Job 실패로 남습니다.
 - 확인: `kubectl -n <ns> get cronjob,jobs` / 결과: `kubectl -n <ns> logs job/<job> -c dump` 와 `-c verify-restore`.

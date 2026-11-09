@@ -1,7 +1,7 @@
 // === 계정 화면 (로드맵 05): 로그인/가입/로그아웃, 용량, 장비 등록 코드, 장비 목록 ===
 // 메모 자체는 계속 이 기기에만 저장됩니다 (동기화는 로드맵 06).
 import type { Locale } from '../settings';
-import { accountApi, ApiError, formatBytes, ServerUnavailable, tokenApi, type Account } from './api';
+import { accountApi, ApiError, downloadApi, formatBytes, ServerUnavailable, tokenApi, type Account } from './api';
 
 // === 0. 문구 (ko/en) ===
 const TEXT: Record<Locale, Record<string, string>> = {
@@ -28,6 +28,10 @@ const TEXT: Record<Locale, Record<string, string>> = {
     revoke: '해제',
     revoked: '해제됨',
     googleSoon: 'Google 로그인은 준비 중입니다.',
+    downloads: '설치 파일',
+    downloadsNone: '아직 준비된 설치 파일이 없습니다.',
+    download: '받기',
+    downloadsHelp: '서명 전 버전이라 처음 실행할 때 보안 경고가 나올 수 있습니다.',
     tokens: '자동화 토큰 (n8n)',
     tokenName: '이름 (예: n8n 업무 자동화)',
     tokenWrite: '쓰기 허용 (메모 수정)',
@@ -61,6 +65,10 @@ const TEXT: Record<Locale, Record<string, string>> = {
     revoke: 'Revoke',
     revoked: 'revoked',
     googleSoon: 'Google sign-in is coming.',
+    downloads: 'Installers',
+    downloadsNone: 'No installers available yet.',
+    download: 'Download',
+    downloadsHelp: 'Unsigned builds: your OS may show a security warning on first launch.',
     tokens: 'Automation tokens (n8n)',
     tokenName: 'Name (e.g. n8n workflow)',
     tokenWrite: 'Allow writes (edit notes)',
@@ -222,9 +230,41 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       message(t('pairHelp')),
       el('h3', {}, t('devices')),
       deviceList,
+      ...downloadSection(),
       ...tokenSection(),
     );
     await renderDevices(deviceList);
+  }
+
+  /** 설치 파일: 누를 때 일회성 주소를 받아 바로 내려받음 (주소는 화면에 표시하지 않음) */
+  function downloadSection(): Node[] {
+    const list = el('ul', { className: 'device-list', id: 'download-list' });
+    void (async () => {
+      const result = await downloadApi.list().catch(() => null);
+      if (!result || !result.files.length) {
+        list.replaceChildren(el('li', { className: 'muted' }, t('downloadsNone')));
+        return;
+      }
+      list.replaceChildren(
+        ...result.files.map((f) => {
+          const get = el('button', { type: 'button', dataset: { downloadId: f.id } }, t('download'));
+          get.onclick = async () => {
+            get.disabled = true;
+            try {
+              const link = await downloadApi.link(f.id);
+              const a = el('a', { href: link.url, download: f.fileName });
+              document.body.append(a);
+              a.click();
+              a.remove();
+            } finally {
+              get.disabled = false;
+            }
+          };
+          return el('li', {}, `${f.platform} · ${f.label} (${formatBytes(f.size)}) `, get);
+        }),
+      );
+    })();
+    return [el('h3', {}, t('downloads')), list, message(t('downloadsHelp'))];
   }
 
   /** 자동화 토큰(n8n): 만들기(원문 1회 표시)·목록·해제 */

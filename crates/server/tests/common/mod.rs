@@ -122,3 +122,14 @@ pub enum Auth<'a> {
     NoCsrfCookie(&'a str),
     Bearer(&'a str),
 }
+
+impl TestApp {
+    /// 본문을 바이트 그대로 받기 (파일 다운로드 확인용)
+    pub async fn raw(&self, uri: &str) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let res = self.router.clone().oneshot(req).await.unwrap();
+        let (status, headers) = (res.status(), res.headers().clone());
+        let bytes = res.into_body().collect().await.unwrap().to_bytes().to_vec();
+        (status, headers, bytes)
+    }
+}
