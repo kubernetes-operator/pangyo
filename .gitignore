@@ -26,3 +26,7 @@ test-results/
 
 # === Claude Code 개인 설정 (공용 설정은 .claude/settings.json) ===
 .claude/settings.local.json
+
+# Python 캐시
+__pycache__/
+*.pyc

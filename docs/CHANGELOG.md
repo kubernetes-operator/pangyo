@@ -107,3 +107,23 @@
 - 운영 정리(2026-11-09, 승인): Released PV 2개 삭제(memonest 실패 볼륨 5Gi, monitoring/timescaledb 50Gi). **NFS CSI 컨트롤러가 NAS를 마운트하지 못해(`mount.nfs: mount system call failed`) PV 삭제 시 NAS 데이터가 지워지지 않음** — NAS 공간 확보는 CSI 문제 해결 또는 NAS에서 직접 정리 필요. 워크로드 없는 PVC 16개(minio 7×500Gi 등)는 소유 팀 확인 대기.
 - 위험: 자동화 토큰 요청 제한 없음(후속). pg_trgm 색인으로 저장 시 쓰기량 소폭 증가.
 - **배포(2026-11-09)**: 릴리스 rev 4, 이미지 `sha-eecf9e0`, 마이그레이션 004(pg_trgm 1.6, 색인 2개)·005 적용. 배포 중 `/readyz` 2초 간격 확인 전부 200(무중단), Postgres 재시작 없음. 도메인에서 검색·연관·토큰 API 비로그인/가짜 토큰 401 확인.
+
+## Unreleased — 로드맵 08단계: FreeBSD arm64 전용 장비 (`feature/roadmap08-bsd-tui`)
+- 앱: 줄 단위 콘솔 → **전체 화면 TUI**(ratatui 0.29): 관리/작성 F6 전환(폭 100칸 이상 두 칸), F2/F3 새 메모·폴더, 한글 2칸 폭 커서, Undo/Redo 250(단어 단위), Tab/Shift+Tab, Ctrl+S, 5초 자동 저장·메모 전환 전 자동 저장, 미저장 종료 경고, 상단 기기 상태·시계.
+- 기기 상태(`device.rs`): FreeBSD `sysctl hw.acpi.battery.*`, `ifconfig wlan0`(SSID·연결), `hccontrol read_scan_enable` / Linux sysfs. 셸 없이 고정 명령, 10초마다 별도 스레드.
+- 키오스크(`apps/bsd/kiosk/`): 전용 계정(셸=재실행 실행기, 암호 로그인 불가), ttyv0 gettytab 자동 로그인, 멱등 설치·`--dry-run`. 옛 `launch.sh` 제거.
+- 검증 도구: `scripts/bsd-vm-verify.py` — FreeBSD 15.1-RELEASE arm64 공식 이미지(SHA256 확인)를 QEMU(TCG)로 부팅, 시리얼 콘솔 자동 조작으로 pkg rust 설치·`cargo test`·release 빌드·pty에서 TUI 키 입력→저장·키오스크 설치 확인. 원본 이미지 불변(오버레이), `--reuse`.
+- 개발 서버: QEMU 10.2 설치(새 패키지 19개만, 기존 패키지 업그레이드 없음, 설정 유지 옵션).
+- CI: GitHub 러너 Ubuntu 26 전환으로 linuxdeploy(FUSE2 필요) 실행 실패 → `APPIMAGE_EXTRACT_AND_RUN=1`; Android 최신 NDK 30의 32비트 링커 없음 → 러너 LTS NDK, Gradle 다운로드 시간 초과 → 캐시·재시도; 번들 도구 504 → 재시도.
+- 테스트: TUI 16개(Linux). **FreeBSD 15.1-RELEASE arm64 VM(QEMU, cortex-a72) 검증 통과 8/8** — arch(aarch64), pkg rust 설치, 소스 전송, `cargo test` 16개 통과, release 빌드(ELF aarch64 FreeBSD), `--version`, TUI 키 입력(F2→새 메모→"안녕 FreeBSD"→Ctrl+S→Ctrl+Q) 저장 확인, 키오스크 설치(사용자·셸 등록·gettytab·ttyv0 자동 로그인, 2회 실행 멱등). 총 3.9분(이미지 재사용).
+- 검증 중 수정: `-cpu max`는 UEFI 단계가 매우 느림 → cortex-a72, FreeBSD 15.0 pkg rust가 15.1 libc 요구 → 15.1 이미지, 파이프가 실패를 가림 → `set -o pipefail`, 시리얼 콘솔 한 줄 입력 한도 초과 → 키오스크 확인을 `apps/bsd/vm/kiosk-check.sh`로 분리.
+- 미검증(실기기 필요): 보드·2화면·Wi-Fi/BT 칩셋 실제 출력·배터리 센서, **콘솔 한글 입력기 없음**(vt), 한글 글꼴.
+
+## Unreleased — 설치 파일 배포 서비스 (`feature/downloads-service`, 2026-11-09 사용자 요청)
+- 요구: 설치 파일을 사용자 Kubernetes로 외부 제공, 직접 주소가 드러나지 않게.
+- 서버: `GET /api/v1/downloads`(로그인 사용자, 저장 경로 비노출), `POST /api/v1/downloads/{id}/link`(5분 유효 임의 토큰, 해시만 저장 `db/postgres/006_download_links.sql`), `GET /dl/{token}`(스트리밍, 응답 시간 제한 없음 — 15초 제한을 API 경로에만 적용하도록 분리). 목록 파일 경로 검증(저장소 밖 금지). 자동화 토큰으로는 불가.
+- 웹: 계정 화면 '설치 파일' (누를 때 주소 발급 → 바로 다운로드, 화면에 주소 없음).
+- 배포: Helm `downloads.*` PVC(2Gi RWX, keep), API 읽기 전용 마운트 / `scripts/publish-downloads.sh`(gh 결과물 → 임시 Pod 복사 → 목록 원자 교체 → 최근 2개 버전 보관).
+- 테스트: 서버 3개(경로 비노출·토큰 링크·재다운로드·잘못된 토큰·저장소 밖 경로 제외·비로그인/자동화 토큰 거부·미설정 503), 계약 28 operation, E2E 1개(브라우저 다운로드 파일 내용 확인).
+- 위험: NAS(90%) 사용, 링크는 5분 안에 공유되면 다른 사람도 받을 수 있음(로그인 사용자만 발급). iOS는 시뮬레이터 빌드라 제외.
+- **배포(2026-11-09)**: 릴리스 rev 5, 이미지 `sha-b130ec5`, 마이그레이션 006, 다운로드 PVC 2Gi(RWX). 배포 중 2초 간격 확인 7회 중 2회 실패(502·응답 없음) → 차트에 `maxUnavailable: 0`, `preStop sleep 8s` 추가(다음 배포부터). 게시: 실행 42572153752의 Windows .msi/.exe, macOS .dmg, Linux .deb/.rpm/.AppImage (102MB). 디버그 APK 464MB는 용량 문제로 제외(`MAX_FILE_MB` 기본 200) — 릴리스(arm64 전용) APK 빌드는 후속. 스크립트 수정: Cargo.toml 버전 줄 주석 때문에 버전을 못 읽던 문제.

@@ -93,3 +93,30 @@ test('자동화 토큰(n8n): 만들기 → 원문 1회 표시 → 그 토큰으�
   await expect(dialog.locator('#token-list')).toContainText('발급한 토큰이 없습니다');
   expect(await status(token)).toBe(401);
 });
+
+test('설치 파일: 로그인하면 목록이 보이고, 받기를 누르면 일회성 주소로 내려받음 (주소는 화면에 없음)', async ({ page }) => {
+  const email = `e2e-dl-${Date.now()}@example.com`;
+  await page.goto('/');
+  await page.evaluate(
+    async ([email, password]) =>
+      fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-MemoNest-Request': '1' },
+        body: JSON.stringify({ email, password }),
+      }),
+    [email, PASSWORD],
+  );
+  await page.reload();
+  await page.locator('#account-btn').click();
+  const list = page.locator('#download-list');
+  await expect(list).toContainText('Windows · 설치 프로그램 (.msi)');
+  await expect(list).not.toContainText('/dl/');
+  await expect(list).not.toContainText('0.0.0-test/');
+  const download = page.waitForEvent('download');
+  await list.locator('button[data-download-id="windows-msi"]').click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('MemoNest_test_x64.msi');
+  expect(file.url()).toMatch(/\/dl\/[A-Za-z0-9_-]{43}$/); // 임의 토큰, 파일명·경로 없음
+  const { readFile } = await import('node:fs/promises');
+  expect(await readFile((await file.path())!, 'utf8')).toBe('MemoNest e2e test installer\n');
+});

@@ -16,6 +16,8 @@ pub const DEFAULT_LEASE_TTL_SECS: i64 = 90;
 pub const NOTE_CONTENT_MAX_BYTES: usize = 900 * 1024;
 /// 변경 목록 한 번에 돌려줄 최대 개수
 pub const CHANGES_PAGE_MAX: i64 = 200;
+/// 설치 파일 다운로드 링크 유효 시간
+pub const DOWNLOAD_LINK_TTL_SECS: i64 = 300;
 /// 로그인/가입/장비 등록 요청 제한: 같은 IP에서 이 시간 동안 이 횟수까지
 pub const AUTH_RATE_WINDOW: Duration = Duration::from_secs(5 * 60);
 pub const AUTH_RATE_LIMIT: u32 = 20;
@@ -46,6 +48,8 @@ pub struct Config {
     pub web_root: Option<PathBuf>,
     /// `LEASE_TTL_SECS` — 편집 임대 유지 시간
     pub lease_ttl_secs: i64,
+    /// `DOWNLOADS_DIR` — 설치 파일 폴더(manifest.json 포함). 없으면 다운로드 기능 끔
+    pub downloads_dir: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -59,6 +63,7 @@ impl Default for Config {
             cookie_secure: true,
             web_root: None,
             lease_ttl_secs: DEFAULT_LEASE_TTL_SECS,
+            downloads_dir: None,
         }
     }
 }
@@ -84,6 +89,7 @@ impl Config {
             cookie_secure: env::var("COOKIE_SECURE").map_or(true, |v| v != "false"),
             web_root: env::var_os("WEB_ROOT").map(PathBuf::from),
             lease_ttl_secs: num("LEASE_TTL_SECS", d.lease_ttl_secs).max(1),
+            downloads_dir: env::var_os("DOWNLOADS_DIR").map(PathBuf::from),
         }
     }
 

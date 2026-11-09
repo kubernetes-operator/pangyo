@@ -1,0 +1,16 @@
+{{- if .Values.downloads.enabled }}
+# 설치 파일 저장소 (API는 읽기 전용, 올리기는 scripts/publish-downloads.sh 의 임시 Pod)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-downloads
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteMany] # API(읽기)와 올리기 Pod(쓰기)가 동시에 마운트 (NFS)
+  {{- with .Values.downloads.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources: {requests: {storage: {{ .Values.downloads.storage | quote }}}}
+{{- end }}

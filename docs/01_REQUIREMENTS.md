@@ -10,7 +10,7 @@
 | 04 | Linux/Windows/Android/iOS | `apps/native` | S |
 | 05 | FreeBSD ARM64 장비 | `apps/bsd` | S |
 | 06 | BSD 셸/Wi-Fi/BT | `config/device.freebsd.example.toml` | P |
-| 07 | BSD 단일 목적 키오스크 | `docs/10_BSD.md` | P |
+| 07 | BSD 단일 목적 키오스크 | `apps/bsd/kiosk` | D (VM 검증, 실기기 전) |
 | 08 | 관리/작성 2화면 | `apps/web`, `docs/03_UX.md` | D |
 | 09 | 트리/시간/배터리/Wi-Fi/BT 상태 | `apps/web`, `docs/03_UX.md` | S |
 | 10 | 메모 전용 화면 | `apps/web` | D |

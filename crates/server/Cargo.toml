@@ -12,7 +12,8 @@ workspace = true
 
 [dependencies]
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "fs"] }
+tokio-util = { version = "0.7", features = ["io"] } # 큰 설치 파일을 나눠서 전송
 tower-http = { version = "0.6", features = ["trace", "timeout", "request-id", "set-header", "limit", "util", "fs"] }
 tower = "0.5"
 tracing = "0.1"
@@ -31,6 +32,7 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 time = { version = "0.3", default-features = false }  # 쿠키 만료 기간 (cookie 크레이트와 같은 타입)
 
 [dev-dependencies]
+tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

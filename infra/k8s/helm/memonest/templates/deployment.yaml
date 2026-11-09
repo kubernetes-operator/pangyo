@@ -12,6 +12,8 @@ metadata:
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.replicaCount }}
+  # 새 Pod가 준비된 뒤 옛 Pod를 내림 (1대 운영에서도 무중단)
+  strategy: {type: RollingUpdate, rollingUpdate: {maxSurge: 1, maxUnavailable: 0}}
   selector:
     matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
   template:
@@ -19,6 +21,7 @@ spec:
       labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
     spec:
       automountServiceAccountToken: false # API는 Kubernetes 자격증명이 불필요
+      terminationGracePeriodSeconds: 30
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: api
@@ -33,12 +36,18 @@ spec:
             - {name: SESSION_DAYS, value: {{ .Values.app.sessionDays | quote }}}
             - {name: COOKIE_SECURE, value: {{ .Values.app.cookieSecure | quote }}}
             - {name: LEASE_TTL_SECS, value: {{ .Values.app.leaseTtlSecs | quote }}}
+            {{- if .Values.downloads.enabled }}
+            - {name: DOWNLOADS_DIR, value: /downloads}
+            {{- end }}
             - name: DB_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
             - name: DATABASE_URL
               value: "postgres://{{ .Values.database.user }}:$(DB_PASSWORD)@{{ include "memonest.dbHost" . }}:5432/{{ .Values.database.name }}"
           ports:
             - {name: http, containerPort: 8080, protocol: TCP}
+          lifecycle:
+            # 종료 전 잠시 대기: 게이트웨이가 연결 대상을 갱신할 시간 (2026-11-09 배포에서 502 1회 관찰)
+            preStop: {sleep: {seconds: 8}}
           readinessProbe: # DB 연결까지 확인
             httpGet: {path: /readyz, port: http}
             periodSeconds: 10
@@ -52,3 +61,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+          {{- if .Values.downloads.enabled }}
+          volumeMounts:
+            - {name: downloads, mountPath: /downloads, readOnly: true}
+      volumes:
+        - name: downloads
+          persistentVolumeClaim: {claimName: {{ .Release.Name }}-downloads, readOnly: true}
+          {{- end }}

@@ -1,0 +1,12 @@
+#!/bin/sh
+# === 키오스크 실행기: 전용 계정의 로그인 셸로 지정. 메모 앱만 실행하고, 종료되면 다시 실행 ===
+# 셸로 빠지는 경로가 없습니다 (Ctrl+C 등 신호는 무시). 관리 작업은 다른 콘솔에서 관리자 계정으로.
+APP="${MEMONEST_APP:-/usr/local/bin/memonest-bsd}"   # 설치된 앱 경로
+RESTART_DELAY=2                                       # 비정상 종료 후 재실행 대기(초)
+export LANG="${LANG:-ko_KR.UTF-8}" LC_ALL="${LC_ALL:-ko_KR.UTF-8}"
+export MEMONEST_NOTES_DIR="${MEMONEST_NOTES_DIR:-$HOME/MemoNest/Notes}"
+trap '' INT QUIT TSTP
+while :; do
+  "${APP}"
+  sleep "${RESTART_DELAY}"
+done

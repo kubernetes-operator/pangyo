@@ -43,6 +43,13 @@ postgres:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {cpu: 500m, memory: 512Mi}
 
+# 설치 파일 배포: API가 읽기 전용으로 마운트해 /dl/<임의 토큰>으로 제공 (실제 경로 비노출)
+# 파일 올리기: scripts/publish-downloads.sh <GitHub 실행 ID> (최신 버전 2개 보관)
+downloads:
+  enabled: true
+  storage: 2Gi
+  storageClass: "" # 비우면 기본 StorageClass
+
 # DB 백업: 매일 pg_dump → 백업 PVC, 매번 임시 Postgres에 실제 복원해 검증 (운영 DB는 읽기만)
 backup:
   enabled: true

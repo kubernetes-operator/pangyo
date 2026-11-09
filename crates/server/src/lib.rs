@@ -9,6 +9,7 @@
 
 pub mod accounts;
 pub mod config;
+pub mod downloads;
 pub mod error;
 pub mod integrations;
 pub mod notes;
@@ -176,10 +177,6 @@ pub fn router(state: AppState) -> Router {
         .layer(PropagateRequestIdLayer::x_request_id())
         // 본문 제한은 타임아웃 바깥에 둡니다 (응답 본문 타입이 바뀌어 순서가 중요)
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT_BYTES))
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            REQUEST_TIMEOUT,
-        ))
         .layer(SetResponseHeaderLayer::overriding(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),
@@ -242,9 +239,18 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/integrations/tokens/{id}",
             delete(integrations::revoke_token),
         )
+        // 설치 파일 목록·링크 발급
+        .route("/api/v1/downloads", get(downloads::list))
+        .route("/api/v1/downloads/{id}/link", post(downloads::create_link))
         .route("/api/v1", any(not_implemented))
         .route("/api/v1/", any(not_implemented))
         .route("/api/v1/{*rest}", any(not_implemented))
+        // 여기까지(API)만 응답 시간 15초 제한. 아래 큰 파일 다운로드는 제한 없음
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            REQUEST_TIMEOUT,
+        ))
+        .route("/dl/{token}", get(downloads::download))
         .with_state(state);
     let router = match web_root {
         // 웹 앱 제공: 없는 경로는 index.html (단일 페이지 앱)

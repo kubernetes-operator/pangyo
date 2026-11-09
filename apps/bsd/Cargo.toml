@@ -1,5 +1,5 @@
 [package]
-# FreeBSD/aarch64 전용 장비용 콘솔 메모 앱. 규칙과 파일 저장은 memonest-core를 공유합니다.
+# FreeBSD/aarch64 전용 장비용 전체 화면 메모 앱 (TUI). 규칙과 파일 저장은 memonest-core를 공유합니다.
 name = "memonest-bsd"
 version.workspace = true
 edition.workspace = true
@@ -11,6 +11,9 @@ workspace = true
 
 [dependencies]
 memonest-core = { path = "../../crates/core" }
+ratatui = "0.29" # 터미널 화면 (crossterm 포함, FreeBSD 지원)
+unicode-width = "0.2" # 한글 등 2칸 글자 커서 위치
+chrono = { version = "0.4", default-features = false, features = ["clock"] } # 상단 시계 (시스템 시간대)
 
 [dev-dependencies]
 tempfile = "3"

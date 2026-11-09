@@ -1,0 +1,13 @@
+{
+  "version": "0.0.0-test",
+  "files": [
+    {
+      "id": "windows-msi",
+      "platform": "Windows",
+      "label": "설치 프로그램 (.msi)",
+      "file": "0.0.0-test/MemoNest_test_x64.msi",
+      "size": 28,
+      "sha256": "1bbec776a6bc363ae6fb25f5bab14e341d533c0b5ceab31dfdf296174dfb3652"
+    }
+  ]
+}
