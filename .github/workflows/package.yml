@@ -63,6 +63,9 @@ jobs:
       - name: 설치 파일 빌드 (tauri build)
         # 번들 도구(WiX/NSIS/linuxdeploy)를 GitHub에서 내려받다 504 등 일시 오류가 나면 최대 3번 시도
         shell: bash
+        env:
+          # Ubuntu 26 러너에는 libfuse2가 없어 AppImage 형식 도구(linuxdeploy)가 실행되지 않음 → 압축 풀어 실행
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           for attempt in 1 2 3; do
             npm run -w apps/native bundle && exit 0
@@ -97,6 +100,13 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
       - uses: Swatinem/rust-cache@v2
+      - name: Gradle 배포판·캐시 (services.gradle.org 다운로드 시간 초과 완화)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/native/src-tauri/tauri.conf.json') }}
       - run: npm ci --no-audit --no-fund
       - name: Android 프로젝트 생성 + 디버그 APK 빌드
         run: |
@@ -104,7 +114,11 @@ jobs:
           export NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK}"
           echo "NDK: ${NDK_HOME}"
           npm run -w apps/native android:init -- --ci
-          npm run -w apps/native android:build -- --debug --apk
+          for attempt in 1 2 3; do
+            npm run -w apps/native android:build -- --debug --apk && exit 0
+            echo "::warning::APK 빌드 실패 (${attempt}/3), 30초 후 재시도 (Gradle 다운로드 시간 초과 등)"; sleep 30
+          done
+          exit 1
       - uses: actions/upload-artifact@v7
         with:
           name: memonest-android-debug
