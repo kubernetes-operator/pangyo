@@ -175,21 +175,57 @@
     },
     "/api/v1/notes": {
       "get": {
-        "summary": "소유자 노트 변경 목록 (cursor)",
-        "x-memonest-status": "planned",
-        "x-required-scope": "notes:read",
+        "summary": "변경 목록 (since 커서 이후, 묘비 포함)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
         "responses": {
-          "501": {
-            "description": "아직 구현되지 않음 (v0.1). 인증·동기화가 있는 것처럼 보이는 가짜 응답을 내지 않습니다.",
+          "200": {
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotImplemented"
+                  "$ref": "#/components/schemas/NoteChanges"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
       }
     },
     "/api/v1/notes/{id}": {
@@ -205,16 +241,44 @@
         }
       ],
       "get": {
-        "summary": "단일 노트 읽기",
-        "x-memonest-status": "planned",
-        "x-required-scope": "notes:read",
+        "summary": "메모 한 개",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
         "responses": {
-          "501": {
-            "description": "아직 구현되지 않음 (v0.1). 인증·동기화가 있는 것처럼 보이는 가짜 응답을 내지 않습니다.",
+          "200": {
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotImplemented"
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -222,21 +286,208 @@
         }
       },
       "put": {
-        "summary": "버전 조건으로 노트 변경",
-        "x-memonest-status": "planned",
-        "x-required-scope": "notes:write",
+        "summary": "저장: 새 메모 baseVersion=0 / 기존 메모는 유효한 임대+fencingToken 필요, 버전이 다르면 409(덮어쓰지 않음)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
         "responses": {
-          "501": {
-            "description": "아직 구현되지 않음 (v0.1). 인증·동기화가 있는 것처럼 보이는 가짜 응답을 내지 않습니다.",
+          "200": {
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotImplemented"
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutNote"
+              }
+            }
+          }
         }
+      },
+      "delete": {
+        "summary": "삭제(묘비). 임대+fencingToken 필요",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "baseVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "clientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencingToken",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
       }
     },
     "/api/v1/notes/{id}/similar": {
@@ -706,6 +957,140 @@
           }
         ]
       }
+    },
+    "/api/v1/notes/{id}/lease": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "편집 임대 획득/갱신 (다른 보유자가 있으면 423 lease_held)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lease"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "편집 임대 반납",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -787,7 +1172,65 @@
         }
       },
       "Note": {
-        "$ref": "schemas/note.schema.json"
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "folder",
+          "format",
+          "content",
+          "version",
+          "contentSha256",
+          "sizeBytes",
+          "createdAt",
+          "modifiedAt",
+          "deleted",
+          "changeSeq"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "md",
+              "txt"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "contentSha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "changeSeq": {
+            "type": "integer"
+          }
+        }
       },
       "Error": {
         "type": "object",
@@ -805,11 +1248,21 @@
               "rate_limited",
               "account_limit_reached",
               "database_not_configured",
-              "database_connecting"
+              "database_connecting",
+              "lease_required",
+              "lease_held",
+              "version_conflict",
+              "path_conflict",
+              "quota_exceeded",
+              "note_too_large"
             ]
           },
           "message": {
             "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "description": "lease_held: holderLabel, expiresAt / version_conflict: currentVersion, deleted"
           }
         }
       },
@@ -1041,6 +1494,115 @@
               "null"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "NoteChanges": {
+        "type": "object",
+        "required": [
+          "notes",
+          "cursor",
+          "hasMore"
+        ],
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Note"
+            }
+          },
+          "cursor": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PutNote": {
+        "type": "object",
+        "required": [
+          "baseVersion",
+          "clientId",
+          "title",
+          "format",
+          "content"
+        ],
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "clientId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "fencingToken": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "md",
+              "txt"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "최대 900KB"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LeaseRequest": {
+        "type": "object",
+        "required": [
+          "clientId"
+        ],
+        "properties": {
+          "clientId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "다른 기기에 보일 이름"
+          }
+        }
+      },
+      "Lease": {
+        "type": "object",
+        "required": [
+          "fencingToken",
+          "expiresAt",
+          "ttlSeconds"
+        ],
+        "properties": {
+          "fencingToken": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ttlSeconds": {
+            "type": "integer"
           }
         }
       }

@@ -10,6 +10,7 @@
 pub mod accounts;
 pub mod config;
 pub mod error;
+pub mod notes;
 pub mod security;
 
 use std::{
@@ -216,6 +217,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/pairing/finish", post(accounts::pairing_finish))
         .route("/api/v1/devices", get(accounts::list_devices))
         .route("/api/v1/devices/{id}", delete(accounts::revoke_device))
+        // 메모 동기화 + 편집 임대 (로드맵 06, ADR-0003)
+        .route("/api/v1/notes", get(notes::changes))
+        .route(
+            "/api/v1/notes/{id}",
+            get(notes::get_note)
+                .put(notes::put_note)
+                .delete(notes::delete_note),
+        )
+        .route(
+            "/api/v1/notes/{id}/lease",
+            post(notes::acquire_lease).delete(notes::release_lease),
+        )
         .route("/api/v1", any(not_implemented))
         .route("/api/v1/", any(not_implemented))
         .route("/api/v1/{*rest}", any(not_implemented))

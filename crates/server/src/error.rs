@@ -11,6 +11,8 @@ pub struct ApiError {
     pub status: StatusCode,
     pub code: &'static str,
     pub message: String,
+    /// 화면이 쓸 추가 정보 (예: 임대 보유자, 서버 현재 버전)
+    pub details: Option<serde_json::Value>,
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -21,7 +23,12 @@ impl ApiError {
             status,
             code,
             message: message.into(),
+            details: None,
         }
+    }
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
     pub fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, code, message)
@@ -57,11 +64,11 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (
-            self.status,
-            Json(json!({ "error": self.code, "message": self.message })),
-        )
-            .into_response()
+        let mut body = json!({ "error": self.code, "message": self.message });
+        if let Some(details) = self.details {
+            body["details"] = details;
+        }
+        (self.status, Json(body)).into_response()
     }
 }
 
