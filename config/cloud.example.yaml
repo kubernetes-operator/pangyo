@@ -1,0 +1,15 @@
+# === 0. 저장 위치 변수: 다른 스토리지 제공자 추가 시 구현 계약을 지킵니다 ===
+mode: local-only # local-only / account-cloud / bring-your-own
+local:
+  canonical_format: md # Native에서 실제 .md 파일을 정본으로 사용할 예정
+  keep_sidecar_index: true # UUID·이력·버전은 별도 로컬 DB
+account_cloud:
+  enabled: false
+  endpoint_env: API_BASE_URL
+  bucket_env: OBJECT_STORAGE_BUCKET # 서버가 관리; 클라이언트가 직접 접근하지 않음
+  plan: free # free / plus / pro
+bring_your_own:
+  enabled: false
+  provider: none # 후속: s3 / webdav / drive / dropbox
+  endpoint: "" # 암호·키는 절대로 Git에 보관하지 않음
+  conflict_handling: preserve-both # 동시 수정 제한 정책 승인 전에는 설계값일 뿐

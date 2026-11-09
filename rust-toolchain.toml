@@ -1,0 +1,5 @@
+# === Rust 툴체인 고정: rustup이 자동으로 이 버전을 설치/사용합니다 ===
+[toolchain]
+channel = "1.99"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

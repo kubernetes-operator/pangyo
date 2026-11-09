@@ -1,0 +1,21 @@
+# === 0. AI 및 자동화 연동 변수: 각 사용자 개인 인증은 프로그램에서 별도 취급 ===
+ai:
+  enabled: false # 앱 기능 검증 + 키 저장소 구현 전 비활성화
+  eligible_platforms: [windows, linux, android, ios] # 실 성능 검증 후 결정
+  providers:
+    openai:
+      enabled: false
+      endpoint: "" # 공식 API 주소 검증 후 기입
+      api_key_source: os_secure_store # 원시 키를 이 YAML에 저장하지 않음
+    anthropic:
+      enabled: false
+      endpoint: ""
+      api_key_source: os_secure_store
+    notebook:
+      enabled: false
+      integration_type: enterprise_api_only # 개인용 공개 API 가정 금지
+n8n:
+  enabled: false
+  base_url: "" # 사용자 n8n 위치만 기입, 액세스 토큰은 별도 Secret
+  token_scopes: [notes:read, notes:write] # 현재 API에서 미구현
+  token_ttl_seconds: 3600

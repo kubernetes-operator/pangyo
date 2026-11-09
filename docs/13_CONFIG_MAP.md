@@ -1,0 +1,35 @@
+# 13. 변수와 설정 파일 위치
+
+| 파일 | 역할 | 커밋 가능 | 실제 사용 여부 |
+|---|---|---|---|
+| `config/project.env.example` | Git/K8s/API/계정 등 모든 외부 접속 자리 | 예 | 복사한 `.env`를 스크립트가 사용 |
+| `.env` | 개인 환경 값 / 키 없는 접속 주소 | **아니요** | shell scripts |
+| `config/client.example.yaml` | UI·로컬 정책 목표 설정 | 예 | **설계값, 웹 코드는 현재 `apps/web/src/settings.ts`의 SETTINGS 사용** |
+| `apps/web/vite.config.ts` | 웹 개발/미리보기 호스트·포트 | 예 | Vite, E2E |
+| `apps/web/build/offline-sw.ts` | 오프라인 서비스워커 생성 규칙 | 예 | 빌드 시 `dist/sw.js` 생성 |
+| `packages/protocol/fixtures/paths.json` | 폴더/파일명 규칙 기준 데이터 (TS·Rust 공통 테스트) | 예 | Vitest, cargo test |
+| `crates/core/src/lib.rs` 상단 상수 | Rust 공통 정책 값 (폴더 깊이, 길이 제한) | 예 | Rust core/BSD |
+| `packages/protocol/openapi.json` | API 계약 원본 (구현/계획 상태 포함) | 예 | 서버 계약 테스트 |
+| `crates/server/src/lib.rs` 상단 상수 | 서버 바인드 기본값, 타임아웃, 본문 제한, CSP (`API_BIND_ADDRESS`, `RUST_LOG` 환경변수) | 예 | API 서버 |
+| `crates/server/src/config.rs` | 계정·동기화 설정 환경변수: `DATABASE_URL`, `MAX_ACCOUNTS`, `FREE_STORAGE_MB`, `REGISTRATION`, `SESSION_DAYS`, `COOKIE_SECURE`, `WEB_ROOT`, `LEASE_TTL_SECS` |
+| `crates/server/src/search.rs`, `integrations.rs` 상단 상수 | 검색 길이·결과 수·유사도 임계값 / 토큰 범위·개수(20)·만료(기본 90, 최대 365일) | 예 | API 서버 |
+| `apps/web/src/sync/engine.ts` 상단 `SYNC_SETTINGS`, `apps/web/src/settings.ts` | 동기화 주기(20초), 올리기 대기, 임대 갱신 비율, 입력 없을 때 임대 반납(2분) | 예 | 웹 | 예(기본값만) | API 서버, Helm `app.*` |
+| Kubernetes Secret `memonest-db` | DB 비밀번호 (키 `password`) | **아니요 — 사용자가 직접 생성** | Helm `database.existingSecret` |
+| `crates/server/Dockerfile`, `.dockerignore` | API 이미지 빌드 (허용 목록 컨텍스트) | 예 | `make image` |
+| `apps/native/src-tauri/src/lib.rs` 상단 상수 | 데스크톱 메모 폴더(`MEMONEST_NOTES_DIR`), 인덱스 파일 이름, 진단 옵션(`MEMONEST_WEBVIEW_CONSOLE`) | 예 | 데스크톱 앱 |
+| `apps/native/src-tauri/tauri.conf.json` | 창, CSP(`ipc:` 허용), 앱 ID(=앱 데이터 폴더 이름) | 예 | Tauri |
+| `.env`의 `APP_BASE_URL` | 서비스 도메인 (예: 사용자가 준비한 도메인). **저장소에 기록하지 않음** | 아니요 | 05단계(OIDC/TLS) 이후 HTTPRoute hostname으로 사용 예정 |
+| `package.json`, `package-lock.json` | npm 워크스페이스·의존성 고정 | 예 | `npm ci` |
+| `config/server.example.yaml` | 서버 계정 등급/스토리지 정책 | 예 | 설계값, 서버 적용 전 |
+| `config/cloud.example.yaml` | 개인 클라우드/공통 클라우드 전략 | 예 | 설계값, 동기화 전 |
+| `config/integrations.example.yaml` | AI/n8n 연동 프로바이더 | 예 | 설계값, 연결 전 |
+| `config/device.freebsd.example.toml` | BSD 단독 장비·터미널·입력 정책 | 예 | 설계값, 실기기 검증 전 |
+| `infra/k8s/helm/memonest/values.yaml` | K8s 메모 API Pod 설정 | 예 | Helm 배포 시 사용 |
+| `CLAUDE.md` | Claude Code 진입 문서 (AGENTS.md 참조) | 예 | Claude Code 사용 시 |
+| `Makefile`, `scripts/check.sh` | 공통 개발/검증 명령 | 예 | 로컬·CI 공통 |
+| `Cargo.toml`, `rust-toolchain.toml` | Rust 워크스페이스·툴체인 고정 | 예 | cargo/rustup |
+| `.github/workflows/ci.yml` | CI (`make check`) | 예 | GitHub push/PR |
+| `config/project.env` | 실제 값이 든 로컬 사본 | **아니요** (.gitignore) | `.env`로 옮겨 사용 권장 |
+| `AGENTS.md` | 에이전트 간 공통 정책 | 예 | 개발 시 확인 |
+
+현재 **이중 설정 관리의 중복 위험**을 줄이기 위해 후속 3단계에서 `client.example.yaml → 검증 → 웹/네이티브 공통 생성 설정`으로 통일할 계획입니다. 지금 `client.example.yaml`의 값을 바꾸면 웹 동작이 자동 변경된다고 주장하면 안 됩니다.

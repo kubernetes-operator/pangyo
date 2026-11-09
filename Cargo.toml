@@ -1,0 +1,15 @@
+# === Rust 워크스페이스 (ADR-0002) ===
+# 공통 도메인(crates/core), 서버(crates/server), BSD TUI(apps/bsd)를 한 워크스페이스로 묶습니다.
+# Tauri 앱(memonest-native)은 시스템 WebKit/GTK가 필요합니다. 없으면 scripts/check.sh가 자동으로 제외합니다.
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/server", "apps/bsd", "apps/native/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"          # 앱/프로토콜 버전과 함께 올립니다
+edition = "2021"
+license = "UNLICENSED"     # 라이선스 미정: 공개 전 결정 필요
+rust-version = "1.85"      # 최소 지원 Rust 버전(MSRV)
+
+[workspace.lints.rust]
+unsafe_code = "forbid"     # 메모 앱에 unsafe가 필요할 이유가 없음

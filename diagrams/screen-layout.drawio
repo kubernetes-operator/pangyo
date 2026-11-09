@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net" modified="2026-10-29T00:00:00.000Z" agent="MemoNest" version="24.7.17" type="device">
+  <diagram name="Page-1" id="screen-layout">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="780" pageHeight="550" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="leftHeader" value="Display A - Organizer&#10;Folder tree / Search" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="leftStatus" value="Battery / WiFi / Bluetooth&#10;Date &amp;amp; Time" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="20" y="100" width="280" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="leftFolders" value="Root&#10;Work&#10;   Project&#10;Personal" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="20" y="185" width="280" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="rightHeader" value="Display B - Writer&#10;Title / Format / Session Time" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="335" y="20" width="370" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="rightNote" value="Markdown / TXT Editor&#10;&#10;Focus on text&#10;&#10;&#10;" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="335" y="100" width="370" height="265" as="geometry" />
+        </mxCell>
+        <mxCell id="one" value="Single display&#10;F6 / Flip (organizer ↔ writer)" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#222222;fillColor=#ffffff;fontColor=#222222;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="180" y="415" width="370" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="e0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="leftHeader" target="leftStatus">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="leftStatus" target="leftFolders">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="rightHeader" target="rightNote">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="flip" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="leftFolders" target="one">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="flip" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#222222;fontColor=#222222;fontSize=10;" edge="1" parent="1" source="rightNote" target="one">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

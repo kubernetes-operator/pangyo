@@ -1,0 +1,165 @@
+# === 패키징 (로드맵 04): 각 OS에서 설치 파일 빌드 → 실제 실행 확인 → 산출물 보관 ===
+# 서명/공증/스토어 배포는 하지 않습니다 (인증서 준비 전). 산출물은 테스트용입니다.
+name: package
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]  # tags만 지정하면 브랜치 push가 제외되므로 명시 (아래 paths로 범위 제한)
+    tags: ["v*"]
+    paths:
+      - "apps/native/**"
+      - "apps/web/**"
+      - "crates/core/**"
+      - "scripts/desktop_smoke.py"
+      - ".github/workflows/package.yml"
+permissions:
+  contents: read
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            app: target/release/memonest-native
+            bundles: |
+              target/release/bundle/deb/*.deb
+              target/release/bundle/rpm/*.rpm
+              target/release/bundle/appimage/*.AppImage
+          - name: windows
+            os: windows-latest
+            app: target/release/memonest-native.exe
+            bundles: |
+              target/release/bundle/msi/*.msi
+              target/release/bundle/nsis/*.exe
+          - name: macos
+            os: macos-latest
+            app: target/release/bundle/macos/MemoNest.app/Contents/MacOS/memonest-native
+            bundles: |
+              target/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - uses: actions/setup-python@v6   # 실행 확인 스크립트 (OS 공통 `python`)
+        with: { python-version: "3.12" }
+      - name: Rust toolchain (rust-toolchain.toml 기준)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Tauri 번들 도구 캐시 (WiX/NSIS/linuxdeploy — GitHub Releases 504 시 재다운로드 방지)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/tauri
+            ~/.cache/tauri
+          key: tauri-bundle-tools-${{ runner.os }}-v1
+      - name: Linux 빌드 의존성
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+      - run: npm ci --no-audit --no-fund
+      - name: 설치 파일 빌드 (tauri build)
+        # 번들 도구(WiX/NSIS/linuxdeploy)를 GitHub에서 내려받다 504 등 일시 오류가 나면 최대 3번 시도
+        shell: bash
+        env:
+          # Ubuntu 26 러너에는 libfuse2가 없어 AppImage 형식 도구(linuxdeploy)가 실행되지 않음 → 압축 풀어 실행
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          for wait in 30 60 120 0; do
+            npm run -w apps/native bundle && exit 0
+            [ "$wait" = 0 ] && break
+            echo "::warning::bundle 실패, ${wait}초 후 재시도 (번들 도구 다운로드 504 등)"; sleep "$wait"
+          done
+          exit 1
+      - name: 실행 확인 (릴리스 앱)
+        run: python scripts/desktop_smoke.py "${{ matrix.app }}"
+        shell: bash
+      - name: 실행 확인 (AppImage)
+        if: runner.os == 'Linux'
+        run: python scripts/desktop_smoke.py target/release/bundle/appimage/*.AppImage
+        shell: bash
+      - uses: actions/upload-artifact@v7
+        with:
+          name: memonest-${{ matrix.name }}
+          path: ${{ matrix.bundles }}
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: "17" }
+      - name: Rust toolchain + Android 타깃
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Gradle 배포판·캐시 (services.gradle.org 다운로드 시간 초과 완화)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/native/src-tauri/tauri.conf.json') }}
+      - run: npm ci --no-audit --no-fund
+      - name: Android 프로젝트 생성 + 디버그 APK 빌드
+        run: |
+          # 러너 '최신' NDK(30+)는 32비트 대상 링커가 없어 실패 → 러너 기본(LTS) NDK 사용
+          export NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK}"
+          echo "NDK: ${NDK_HOME}"
+          npm run -w apps/native android:init -- --ci
+          # Gradle 배포판 다운로드 제한 시간 기본 10초 → 2분 (services.gradle.org 응답이 느릴 때 실패 방지)
+          WRAPPER=apps/native/src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
+          if grep -q '^networkTimeout=' "$WRAPPER"; then sed -i 's/^networkTimeout=.*/networkTimeout=120000/' "$WRAPPER"; else echo 'networkTimeout=120000' >> "$WRAPPER"; fi
+          # services.gradle.org(중계)가 러너 IP에 504를 반환 → 같은 파일이 있는 GitHub Releases 주소로 직접 받기
+          VER=$(sed -n 's/^distributionUrl=.*gradle-\([0-9.]*\)-bin\.zip$/\1/p' "$WRAPPER")
+          sed -i "s#^distributionUrl=.*#distributionUrl=https\\://github.com/gradle/gradle-distributions/releases/download/v${VER}/gradle-${VER}-bin.zip#" "$WRAPPER"
+          grep -E '^(distributionUrl|networkTimeout)=' "$WRAPPER"
+          # Gradle 배포판은 GitHub Releases에서 받음 → 504가 간헐적으로 나면 간격을 늘려 재시도 (성공 후엔 캐시 사용)
+          for wait in 30 60 120 0; do
+            npm run -w apps/native android:build -- --debug --apk && exit 0
+            [ "$wait" = 0 ] && break
+            echo "::warning::APK 빌드 실패, ${wait}초 후 재시도 (Gradle 다운로드 504/시간 초과 등)"; sleep "$wait"
+          done
+          exit 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: memonest-android-debug
+          path: apps/native/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    # 서명 팀/인증서가 없어 시뮬레이터 빌드만 시도합니다. 실패해도 다른 결과는 막지 않음.
+    runs-on: macos-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - name: Rust toolchain + iOS 시뮬레이터 타깃
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+      - run: brew install xcodegen
+      - run: npm ci --no-audit --no-fund
+      - name: iOS 프로젝트 생성 + 시뮬레이터 빌드
+        run: |
+          npm run -w apps/native ios:init -- --ci
+          npm run -w apps/native ios:build -- --debug --target aarch64-sim

@@ -1,0 +1,24 @@
+# === FreeBSD arm64 단독 장비 변수 (보드 선정 후 실제 드라이버 검증) ===
+[device]
+name = "memonest-bsd"
+architecture = "aarch64" # FreeBSD의 CPU 플랫폼 표기
+kiosk = true # 메모 이외의 앱 UI를 제공하지 않는 정책
+shell = "/bin/sh" # FreeBSD 기본 셸; Bash는 선택 설치
+locale = "ko_KR.UTF-8" # 콘솔 한글 입력이 보장되는 것은 아님
+
+[display]
+mode = "single" # single 또는 dual, dual은 보드/드라이버 실증 필요
+flip_key = "F6" # 단일 화면의 패널 전환 키
+
+[connectivity]
+wifi = "device-dependent" # ifconfig 및 무선 칩셋 지원 확인
+bluetooth = "device-dependent" # 장비별 펌웨어 및 프로파일 확인
+
+[storage]
+notes_dir = "~/Notes" # 파일 저장 디렉터리 예시
+format = "md"
+max_depth = 2
+
+[security]
+autostart = true # 부팅 시 전용 앱 실행
+shell_escape_in_ui = false # 앱 화면에서 임의 셸 명령 실행 금지

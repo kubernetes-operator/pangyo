@@ -1,0 +1,21 @@
+# === 허용 목록 방식: 아래 경로만 이미지 빌드 컨텍스트에 들어갑니다 ===
+# (.env, config/project.env, target/, node_modules/ 등은 자동으로 제외)
+**
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!package.json
+!package-lock.json
+!crates/**
+!apps/bsd/**
+!apps/web/**
+!apps/native/package.json
+!apps/native/src-tauri/**
+!packages/protocol/**
+!db/**
+**/target
+**/node_modules
+**/dist
+apps/native/src-tauri/gen
+apps/web/test-results
+apps/web/playwright-report

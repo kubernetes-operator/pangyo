@@ -1,0 +1,2074 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MemoNest API",
+    "version": "0.1.0",
+    "description": "MemoNest 서버 API 계약의 단일 원본 (ADR-0002). x-memonest-status: implemented = 동작, planned = 설계만 존재(501). x-requires-database: DATABASE_URL 없으면 503. 계약 테스트: crates/server/tests/api.rs. 설계 설명: docs/05_SYNC_API.md"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Liveness",
+        "x-memonest-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readiness (외부 저장소 미사용)",
+        "x-memonest-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/info": {
+      "get": {
+        "summary": "서버 버전과 기능 활성 여부",
+        "x-memonest-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pairing/start": {
+      "post": {
+        "summary": "장비 등록 일회용 코드 (웹 로그인 세션 필요, 10분 유효)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingStart"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
+    },
+    "/api/v1/pairing/finish": {
+      "post": {
+        "summary": "등록 코드를 장비 토큰으로 교환 (토큰은 이 응답에서만 보임)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingFinish"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingFinishRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notes": {
+      "get": {
+        "summary": "변경 목록 (since 커서 이후, 묘비 포함)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteChanges"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/notes/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "summary": "메모 한 개",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "저장: 새 메모 baseVersion=0 / 기존 메모는 유효한 임대+fencingToken 필요, 버전이 다르면 409(덮어쓰지 않음)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutNote"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "삭제(묘비). 임대+fencingToken 필요",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "baseVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "clientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencingToken",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
+    },
+    "/api/v1/notes/{id}/similar": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "summary": "연관 메모 (유사도 0.08 이상)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          },
+          {
+            "integrationToken": [
+              "notes:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchHit"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/sync/commit": {
+      "post": {
+        "summary": "idempotency key와 version을 포함한 배치",
+        "x-memonest-status": "planned",
+        "x-required-scope": "notes:write",
+        "responses": {
+          "501": {
+            "description": "아직 구현되지 않음 (v0.1). 인증·동기화가 있는 것처럼 보이는 가짜 응답을 내지 않습니다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotImplemented"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/quota": {
+      "get": {
+        "summary": "본인 사용량 및 요금제",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quota"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/tokens": {
+      "get": {
+        "summary": "내 자동화 토큰 목록 (원문 없음, 웹 세션만)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IntegrationToken"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "자동화 토큰 발급 (n8n 등). 범위 notes:read/notes:write, 만료 1~365일, 원문은 이 응답에서만",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedIntegrationToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntegrationToken"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/providers": {
+      "get": {
+        "summary": "사용 가능한 로그인 방식과 가입 허용 여부",
+        "x-memonest-status": "implemented",
+        "x-requires-database": false,
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Providers"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "summary": "이메일+비밀번호 가입 (세션 쿠키 발급, 계정 수 상한 MAX_ACCOUNTS)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "로그인 (세션 쿠키 발급)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "로그아웃 (세션 삭제)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/google/start": {
+      "get": {
+        "summary": "Google 로그인 시작 (후속: OAuth 클라이언트 등록 필요)",
+        "x-memonest-status": "planned",
+        "responses": {
+          "501": {
+            "description": "아직 구현되지 않음 (v0.1). 인증·동기화가 있는 것처럼 보이는 가짜 응답을 내지 않습니다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotImplemented"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account": {
+      "get": {
+        "summary": "내 계정",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "summary": "내 장비 목록",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Device"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "summary": "장비 등록 해제 (토큰 즉시 무효)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
+    },
+    "/api/v1/notes/{id}/lease": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "편집 임대 획득/갱신 (다른 보유자가 있으면 423 lease_held)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lease"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "편집 임대 반납",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "summary": "서버 검색 (제목·본문, 한국어, pg_trgm). 제목 일치 우선",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          },
+          {
+            "integrationToken": [
+              "notes:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchHit"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/tokens/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "summary": "자동화 토큰 해제 (즉시 무효)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Status": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        }
+      },
+      "Readiness": {
+        "type": "object",
+        "required": [
+          "status",
+          "note"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "note": {
+            "type": "string",
+            "examples": [
+              "sync_not_ready"
+            ]
+          },
+          "database": {
+            "enum": [
+              "ok",
+              "error",
+              "connecting",
+              "not_configured"
+            ]
+          }
+        }
+      },
+      "Info": {
+        "type": "object",
+        "required": [
+          "version",
+          "authEnabled",
+          "syncEnabled",
+          "warning"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "authEnabled": {
+            "type": "boolean",
+            "description": "DATABASE_URL 설정 시 true (계정 기능)"
+          },
+          "syncEnabled": {
+            "type": "boolean"
+          },
+          "warning": {
+            "type": "string"
+          }
+        }
+      },
+      "NotImplemented": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "const": "not_implemented"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Note": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "folder",
+          "format",
+          "content",
+          "version",
+          "contentSha256",
+          "sizeBytes",
+          "createdAt",
+          "modifiedAt",
+          "deleted",
+          "changeSeq"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "md",
+              "txt"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "contentSha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "changeSeq": {
+            "type": "integer"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "examples": [
+              "invalid_credentials",
+              "email_taken",
+              "csrf",
+              "rate_limited",
+              "account_limit_reached",
+              "database_not_configured",
+              "database_connecting",
+              "lease_required",
+              "lease_held",
+              "version_conflict",
+              "path_conflict",
+              "quota_exceeded",
+              "note_too_large",
+              "insufficient_scope",
+              "invalid_scopes",
+              "invalid_ttl",
+              "too_many_tokens",
+              "invalid_query"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "description": "lease_held: holderLabel, expiresAt / version_conflict: currentVersion, deleted"
+          }
+        }
+      },
+      "Providers": {
+        "type": "object",
+        "required": [
+          "local",
+          "google",
+          "registration"
+        ],
+        "properties": {
+          "local": {
+            "type": "boolean"
+          },
+          "google": {
+            "type": "boolean"
+          },
+          "registration": {
+            "enum": [
+              "open",
+              "closed"
+            ]
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 256
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 80
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "displayName",
+          "authProvider",
+          "tier",
+          "quotaBytes",
+          "usedBytes",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "authProvider": {
+            "enum": [
+              "local",
+              "google"
+            ]
+          },
+          "tier": {
+            "enum": [
+              "free",
+              "plus",
+              "pro"
+            ]
+          },
+          "quotaBytes": {
+            "type": "integer"
+          },
+          "usedBytes": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Quota": {
+        "type": "object",
+        "required": [
+          "tier",
+          "quotaBytes",
+          "usedBytes"
+        ],
+        "properties": {
+          "tier": {
+            "type": "string"
+          },
+          "quotaBytes": {
+            "type": "integer"
+          },
+          "usedBytes": {
+            "type": "integer"
+          }
+        }
+      },
+      "PairingStart": {
+        "type": "object",
+        "required": [
+          "code",
+          "expiresAt"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-HJ-NP-Z2-9]{8}$"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PairingFinishRequest": {
+        "type": "object",
+        "required": [
+          "code",
+          "deviceName",
+          "platform"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "platform": {
+            "type": "string",
+            "examples": [
+              "windows",
+              "linux",
+              "macos",
+              "android",
+              "ios",
+              "freebsd",
+              "n8n"
+            ]
+          }
+        }
+      },
+      "PairingFinish": {
+        "type": "object",
+        "required": [
+          "deviceId",
+          "token"
+        ],
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": "string",
+            "description": "Authorization: Bearer 로 사용. OS 보안 저장소에 보관"
+          }
+        }
+      },
+      "Device": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "platform",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "NoteChanges": {
+        "type": "object",
+        "required": [
+          "notes",
+          "cursor",
+          "hasMore"
+        ],
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Note"
+            }
+          },
+          "cursor": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PutNote": {
+        "type": "object",
+        "required": [
+          "baseVersion",
+          "clientId",
+          "title",
+          "format",
+          "content"
+        ],
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "clientId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "fencingToken": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "md",
+              "txt"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "최대 900KB"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LeaseRequest": {
+        "type": "object",
+        "required": [
+          "clientId"
+        ],
+        "properties": {
+          "clientId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "다른 기기에 보일 이름"
+          }
+        }
+      },
+      "Lease": {
+        "type": "object",
+        "required": [
+          "fencingToken",
+          "expiresAt",
+          "ttlSeconds"
+        ],
+        "properties": {
+          "fencingToken": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ttlSeconds": {
+            "type": "integer"
+          }
+        }
+      },
+      "SearchHit": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "folder",
+          "format",
+          "snippet",
+          "score"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "md",
+              "txt"
+            ]
+          },
+          "snippet": {
+            "type": "string",
+            "description": "일치 위치 주변 160자"
+          },
+          "score": {
+            "type": "number"
+          }
+        }
+      },
+      "CreateIntegrationToken": {
+        "type": "object",
+        "required": [
+          "name",
+          "scopes"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "notes:read",
+                "notes:write"
+              ]
+            },
+            "minItems": 1
+          },
+          "ttlDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "default": 90
+          }
+        }
+      },
+      "IntegrationToken": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "createdAt",
+          "expiresAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "CreatedIntegrationToken": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/IntegrationToken"
+          },
+          {
+            "type": "object",
+            "required": [
+              "token"
+            ],
+            "properties": {
+              "token": {
+                "type": "string",
+                "pattern": "^mn_pat_",
+                "description": "이 응답에서만 보임. n8n 자격 증명에 저장"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "memonest_session",
+        "description": "웹 로그인 세션 (HttpOnly, SameSite=Strict)"
+      },
+      "device": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "장비 등록으로 받은 토큰"
+      },
+      "integrationToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "자동화 토큰 mn_pat_... (범위 제한: notes:read / notes:write, 계정·장비·토큰 관리 불가)"
+      }
+    },
+    "parameters": {
+      "CsrfHeader": {
+        "name": "X-MemoNest-Request",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "const": "1"
+        },
+        "description": "상태 변경 요청 필수 (CSRF 방지)"
+      }
+    }
+  }
+}

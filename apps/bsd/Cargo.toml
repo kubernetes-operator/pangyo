@@ -1,0 +1,16 @@
+[package]
+# FreeBSD/aarch64 전용 장비용 콘솔 메모 앱. 규칙과 파일 저장은 memonest-core를 공유합니다.
+name = "memonest-bsd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+memonest-core = { path = "../../crates/core" }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,26 @@
+{
+  "name": "@memonest/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MemoNest 웹 UI (웹 PWA + Tauri 공용)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "fake-indexeddb": "^6.2.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4"
+  }
+}

@@ -1,0 +1,89 @@
+{{- if and .Values.backup.enabled .Values.postgres.enabled }}
+# === DB 백업 (매일 pg_dump + 복원 검증). 스크립트: files/backup.sh, files/verify-restore.sh ===
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-backup-scripts
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+data:
+  backup.sh: |
+{{ .Files.Get "files/backup.sh" | indent 4 }}
+  verify-restore.sh: |
+{{ .Files.Get "files/verify-restore.sh" | indent 4 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-backup
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep # helm uninstall 해도 백업은 남김
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.backup.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources: {requests: {storage: {{ .Values.backup.storage | quote }}}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-backup
+  labels: {{- include "memonest.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: backup}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext: {seccompProfile: {type: RuntimeDefault}}
+          initContainers:
+            # 1) 백업: DB에 접속해 덤프 (root로 실행: NFS 백업 폴더 소유자가 root)
+            - name: dump
+              image: {{ .Values.postgres.image | quote }}
+              command: [sh, /scripts/backup.sh]
+              env:
+                - {name: PGHOST, value: {{ include "memonest.dbHost" . | quote }}}
+                - {name: PGUSER, value: {{ .Values.database.user | quote }}}
+                - {name: PGDATABASE, value: {{ .Values.database.name | quote }}}
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
+                - {name: RETENTION_DAYS, value: {{ .Values.backup.retentionDays | quote }}}
+              securityContext: {runAsUser: 0, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              resources:
+{{ toYaml .Values.backup.resources | indent 16 }}
+              volumeMounts:
+                - {name: backup, mountPath: /backup}
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            # 2) 복원 검증: 노드 로컬 임시 디스크에 Postgres를 띄워 방금 백업을 복원 (운영 DB와 무관)
+            - name: verify-restore
+              image: {{ .Values.postgres.image | quote }}
+              command: [sh, /scripts/verify-restore.sh]
+              securityContext: {runAsUser: 999, runAsGroup: 999, runAsNonRoot: true, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              resources:
+{{ toYaml .Values.backup.resources | indent 16 }}
+              volumeMounts:
+                - {name: backup, mountPath: /backup, readOnly: true}
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+                - {name: verify, mountPath: /verify}
+                - {name: tmp, mountPath: /tmp}
+                - {name: run, mountPath: /var/run/postgresql}
+          volumes:
+            - {name: backup, persistentVolumeClaim: {claimName: {{ .Release.Name }}-backup}}
+            - {name: scripts, configMap: {name: {{ .Release.Name }}-backup-scripts, defaultMode: 0555}}
+            - {name: verify, emptyDir: {sizeLimit: 2Gi}}
+            - {name: tmp, emptyDir: {}}
+            - {name: run, emptyDir: {}}
+{{- end }}

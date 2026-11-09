@@ -1,0 +1,64 @@
+# === 0. Helm 값: 레지스트리/태그/도메인은 배포 시 --set 으로 전달 (저장소에 실제 값 기록 금지) ===
+replicaCount: 1 # 요청 제한(rate limit)이 서버 메모리에 있어 1대 기준. 늘리려면 공유 저장소 필요
+image:
+  repository: "" # 필수: 예) ghcr.io/<org>/<repo>/memonest-api
+  tag: "" # 필수: 예) sha-<커밋 7자리>
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP # 외부 노출은 HTTPRoute로만
+  port: 8080
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 256Mi} # 비밀번호 해시(Argon2) 1회 약 19MiB
+
+# 앱 설정 (crates/server/src/config.rs)
+app:
+  registration: open # open | closed
+  maxAccounts: 999 # 요구 17: 1000명 미만
+  freeStorageMb: 100 # 임시 정책값
+  sessionDays: 30
+  cookieSecure: true # HTTPS 뒤에서는 반드시 true
+  leaseTtlSecs: 90 # 편집 임대 유지 시간 (ADR-0003). 브라우저는 1/3마다 갱신
+  logLevel: info
+
+# DB 연결. 비밀번호는 사용자가 직접 만든 Secret에서만 읽습니다 (차트는 비밀값을 만들지 않음).
+database:
+  existingSecret: memonest-db # kubectl create secret generic memonest-db --from-literal=password=...
+  passwordKey: password # URL에 들어가므로 영문/숫자만 권장 (openssl rand -hex 24)
+  user: memonest
+  name: memonest
+
+# 내장 Postgres (StatefulSet). 외부 DB를 쓰려면 false 후 externalHost 지정
+postgres:
+  enabled: true
+  externalHost: "" # enabled=false 일 때 DB 호스트
+  image: postgres:17-bookworm # 클러스터 NFS에서 검증된 Debian 기반 (alpine은 NFS lock 권한 문제 사례 있음)
+  storage: 5Gi
+  startupFailureThreshold: 180 # 시작 검사 10초 × 180 = 최대 30분 (느린 NFS에서 첫 initdb/복구 대기)
+  # 첫 초기화 때만 사용. --no-sync: initdb의 수천 번 fsync 생략(이 클러스터 NFS에서 10분 이상 → 수십 초 예상).
+  # 초기화 도중 중단되면 볼륨을 비우고 다시 초기화해야 함 (데이터가 없는 첫 설치 때만 해당)
+  initdbArgs: "--no-sync"
+  storageClass: "" # 비우면 클러스터 기본 StorageClass
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+# DB 백업: 매일 pg_dump → 백업 PVC, 매번 임시 Postgres에 실제 복원해 검증 (운영 DB는 읽기만)
+backup:
+  enabled: true
+  schedule: "0 3 * * *" # 매일 03:00
+  timeZone: Asia/Seoul
+  retentionDays: 14 # 이보다 오래된 백업 삭제 (최신 1개는 항상 보관)
+  storage: 1Gi
+  storageClass: "" # 비우면 기본 StorageClass. 가능하면 DB와 다른 스토리지 권장
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+# 외부 접속 (Gateway API). 기존 앱들과 같은 방식: 공용 Gateway의 http/https 리스너에 연결
+httpRoute:
+  enabled: false
+  hostname: "" # 예) 사용자 도메인 — --set 으로만 전달
+  gatewayName: ""
+  gatewayNamespace: ""
+  sectionNames: [http, https]

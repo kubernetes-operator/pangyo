@@ -1,0 +1,40 @@
+# === CI: 로컬과 동일하게 `make check` 실행. 배포/비밀값 사용 없음 ===
+name: ci
+on:
+  push:
+    branches: [main, develop, "feature/**"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # 서버 계정 API 통합 테스트용 (테스트 전용, 외부 노출 없음)
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_HOST_AUTH_METHOD: trust }
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres@127.0.0.1:55432/postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22", cache: npm }
+      - name: Rust toolchain (rust-toolchain.toml 기준)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: 데스크톱(Tauri) 빌드 의존성
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+      - run: npm ci --no-audit --no-fund
+      - name: Playwright Chromium
+        run: npx -w apps/web playwright install --with-deps chromium
+      - run: make check
+      - name: 데스크톱 앱 실행 확인 (Xvfb)
+        run: make desktop-smoke
+      - name: Helm lint
+        run: make helm-lint
