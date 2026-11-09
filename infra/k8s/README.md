@@ -28,4 +28,6 @@ helm upgrade --install memonest-api infra/k8s/helm/memonest \
 - Postgres는 같은 릴리스의 API Pod만 접속 가능(NetworkPolicy).
 - 요청 제한은 서버 메모리 기반이라 `replicaCount: 1` 기준.
 - 공용 Gateway의 https 인증서에 도메인이 없어도 Cloudflare가 사용자 TLS를 처리. Cloudflare→원 서버 구간 엄격 검증(Full strict)을 쓰려면 인증서에 도메인 추가 필요(공용 리소스 변경 — 별도 승인).
+- Cloudflare 프록시가 HTML에 봇 탐지 스크립트(`/cdn-cgi/challenge-platform`)를 삽입하지만 앱 CSP(`script-src 'self'`)가 차단 → 브라우저 콘솔에 CSP 경고만 남고 앱 동작에는 영향 없음. 없애려면 Cloudflare에서 해당 호스트의 JavaScript Detections를 끄거나 CSP에 예외 추가(보안 검토 필요).
+- 첫 설치 때 Postgres 초기화는 이 클러스터 NFS에서 약 10분(공식 이미지의 DB 생성 포함). `helm --wait --timeout 35m` 사용.
 - Google 로그인: Google Cloud에서 OAuth 클라이언트를 만든 뒤 Secret으로 주입하는 후속 작업 (`/api/v1/auth/google/start`는 현재 501).
