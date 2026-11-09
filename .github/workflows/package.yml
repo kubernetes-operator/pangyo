@@ -114,6 +114,10 @@ jobs:
           export NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK}"
           echo "NDK: ${NDK_HOME}"
           npm run -w apps/native android:init -- --ci
+          # Gradle 배포판 다운로드 제한 시간 기본 10초 → 2분 (services.gradle.org 응답이 느릴 때 실패 방지)
+          WRAPPER=apps/native/src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
+          if grep -q '^networkTimeout=' "$WRAPPER"; then sed -i 's/^networkTimeout=.*/networkTimeout=120000/' "$WRAPPER"; else echo 'networkTimeout=120000' >> "$WRAPPER"; fi
+          grep -E '^(distributionUrl|networkTimeout)=' "$WRAPPER"
           for attempt in 1 2 3; do
             npm run -w apps/native android:build -- --debug --apk && exit 0
             echo "::warning::APK 빌드 실패 (${attempt}/3), 30초 후 재시도 (Gradle 다운로드 시간 초과 등)"; sleep 30
