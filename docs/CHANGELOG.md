@@ -131,6 +131,6 @@
 ## Unreleased — 정리: 준비 상태 문구, Android 설치 파일 축소 (`feature/roadmap09-cleanup`)
 - 변경 파일: `crates/server/src/lib.rs`, `crates/server/tests/accounts.rs`, `packages/protocol/openapi.json`, `.github/workflows/package.yml`, `scripts/publish-downloads.sh`.
 - `/readyz`의 `note`: 동기화 구현 전 문구 `sync_not_ready` → `sync_ready`(DB 정상) / `sync_unavailable`(DB 연결 중·오류, 503) / `local_only`(DB 미설정). OpenAPI에 값 목록과 503 응답 추가.
-- Android CI: arm64만, Rust 디버그 정보 제외(`CARGO_PROFILE_DEV_DEBUG=0`, `STRIP=debuginfo`) → 4개 ABI 디버그 APK(약 460MB) 대신 설치 배포 가능한 크기. 게시 스크립트는 `*-debug.apk`를 찾음.
+- Android CI: arm64만, Rust 디버그 정보 제외(`CARGO_PROFILE_DEV_DEBUG=0`, `STRIP=debuginfo`) → CI 결과 APK **475MB → 29MB**(arm64-v8a만 포함 확인). 게시 스크립트는 `*-debug.apk`를 찾음.
 - 운영: API 롤링 설정(preStop 8초, maxUnavailable 0) rev 6 배포 — 이미지 변경 없음, `/healthz` 30/30 200. 외부 경로(Cloudflare→게이트웨이) 응답이 1~4초로 느림, API 자체는 약 20ms.
 - 테스트: 서버 테스트(실 Postgres) 통과.
