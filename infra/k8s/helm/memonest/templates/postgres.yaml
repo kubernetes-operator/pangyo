@@ -81,5 +81,7 @@ spec:
     - from:
         - podSelector:
             matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
+        - podSelector: # DB 백업 Job (읽기 전용 덤프)
+            matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: backup}
       ports: [{port: 5432, protocol: TCP}]
 {{- end }}

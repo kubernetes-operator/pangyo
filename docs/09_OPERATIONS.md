@@ -18,5 +18,6 @@
   - 현재 구현: 모든 응답에 `x-request-id`(없으면 생성), 요청마다 INFO 로그(method, uri, request_id, status, latency). 미구현 501은 WARN. 레벨은 `RUST_LOG`로 조정(헬스 프로브 로그가 많으면 `tower_http=warn`).
   - SIGTERM 수신 시 진행 중 요청을 마치고 종료(graceful shutdown).
 - 데이터: DB PITR, object versioning, 사용자 단위 export/삭제 정책 확정.
+  - **구현(2026-11-09)**: 매일 `pg_dump` 백업 + 매번 복원 검증 CronJob, 14일 보관, 백업 PVC 유지 정책. 절차는 `infra/k8s/README.md`. PITR(WAL 보관)과 NAS 밖 사본은 후속.
 - Cloud 저장소의 장애 시 메모 편집 지속, 동기화 실패 알림 및 지수 백오프.
 - 지역별 법률·개인정보·결제 요구는 상용 서비스 시작 전에 별도 검토.

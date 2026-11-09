@@ -89,3 +89,10 @@
 - 테스트: 서버 동기화 5개 + 계정 9개, 웹 단위 76개(엔진 8개), E2E 13개(실서버 두 브라우저 동기화 1개, 3회 반복 통과).
 - 위험: 본문을 Postgres에 저장(S3 전) — NAS 성능·용량 영향. 편집 세션·Undo는 기기별(동기화 안 함). 같은 브라우저의 두 탭도 서로 다른 기기로 취급(동시 편집 불가). 웹에 메모 삭제 기능은 아직 없음(서버·동기화는 지원).
 - **배포(2026-11-09)**: 릴리스 `memonest-api` rev 2, 이미지 `sha-a61938d`, 마이그레이션 003 적용(`note_leases` 생성), 도메인 `/readyz` ok·웹 200·동기화 API 비로그인 401 확인. 롤아웃 약 75초 중 Postgres 재시작(상태 검사 설정 변경)으로 **약 30~45초 503**(계정·메모 0건이라 데이터 영향 없음). 후속: Postgres 재시작이 필요한 변경은 사용자 공지 후 진행, `/readyz`의 `note: sync_not_ready` 문구 갱신.
+
+## Unreleased — DB 백업 (`feature/roadmap06-db-backup`)
+- 조사: Velero 매일 백업은 memonest 미포함, 주간 전체 백업은 실행 중 Postgres 파일을 복사(일관성 보장 없음), Velero 저장소 MinIO도 같은 NAS.
+- 추가: Helm `backup.*` — CronJob(매일 03:00 Asia/Seoul) init 컨테이너 `pg_dump -Fc`(임시 이름→완료 시 이름 변경, 14일 보관) + 본 컨테이너가 노드 로컬 임시 Postgres에 복원·검사(테이블 7개, 실패 마이그레이션 0). 백업 PVC 1Gi(`resource-policy: keep`), NetworkPolicy에 백업 Pod 허용. 스크립트 `infra/k8s/helm/memonest/files/`.
+- 검증(로컬, 같은 이미지·같은 실행 사용자): 정상 백업 복원 성공 / 깨진 백업·백업 없음은 이유를 남기고 실패. 처음 실패 사례: 백업 폴더 권한 700이면 검증 컨테이너(uid 999)가 못 읽음 → 백업 스크립트가 폴더 755·파일 644로 설정.
+- 운영 영향: 기존 Postgres/API 매니페스트 변경 없음(재시작 없음).
+- 후속: NAS 밖 사본(다른 장비/외부 S3), WAL 보관(PITR), 백업 실패 알림.

@@ -23,6 +23,21 @@ helm upgrade --install memonest-api infra/k8s/helm/memonest \
 - `./scripts/deploy.sh`는 위 명령을 `.env` 값으로 실행하며 실행 전 `DEPLOY` 입력을 요구합니다.
 - 확인: `kubectl -n <namespace> get pods,svc,pvc,httproute`, `curl https://<도메인>/readyz` → `"database":"ok"`.
 
+## DB 백업과 복원
+- **자동 백업**: CronJob `<릴리스>-backup`이 매일 03:00(Asia/Seoul) `pg_dump -Fc`로 백업 PVC `<릴리스>-backup`에 저장하고 14일 보관(최신 1개는 항상 유지). 같은 Job이 **매번 임시 Postgres(노드 로컬 디스크)에 실제로 복원해 테이블·마이그레이션을 검사** — 복원이 안 되는 백업은 Job 실패로 남습니다.
+- 확인: `kubectl -n <ns> get cronjob,jobs` / 결과: `kubectl -n <ns> logs job/<job> -c dump` 와 `-c verify-restore`.
+- 지금 한 번 실행: `kubectl -n <ns> create job --from=cronjob/<릴리스>-backup <릴리스>-backup-manual-$(date +%s)`
+- 백업 PVC는 `helm uninstall` 후에도 남습니다(`helm.sh/resource-policy: keep`).
+- 오프사이트: 클러스터 Velero 주간 전체 백업이 이 PVC의 덤프 파일도 MinIO로 가져갑니다. **MinIO도 같은 NAS에 있으므로 NAS 장애 대비로는 부족** — 다른 장비로 복사하는 것은 후속 과제.
+
+### 복원 절차 (운영 데이터를 덮어쓰므로 반드시 승인 후)
+1. 쓰기 중단: `kubectl -n <ns> scale deploy/<릴리스> --replicas=0`
+2. 복원용 Pod에서 백업 PVC와 DB 연결: `kubectl -n <ns> run pg-restore --rm -it --image=postgres:17-bookworm --overrides='<backup PVC를 /backup에 마운트, 레이블 app.kubernetes.io/component=backup>' -- bash`
+   (NetworkPolicy상 DB 접속은 `component=backup` 레이블 Pod만 허용)
+3. Pod 안에서: `export PGPASSWORD=...` (Secret 값은 사용자가 직접 입력) 후
+   `pg_restore -h <릴리스>-postgres -U memonest -d memonest --clean --if-exists --no-owner /backup/memonest-<시각>.dump`
+4. 재개: `kubectl -n <ns> scale deploy/<릴리스> --replicas=1` → `/readyz` 확인
+
 ## 운영 주의
 - 내장 Postgres는 단일 인스턴스, 기본 StorageClass(NFS)에 저장. NFS 마운트 옵션에 `nolock`이 있어 강제 종료 시 손상 위험 → **백업(pg_dump/PITR) 설정 전 중요한 데이터 보관 금지**.
 - Postgres는 같은 릴리스의 API Pod만 접속 가능(NetworkPolicy).
