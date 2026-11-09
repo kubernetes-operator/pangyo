@@ -106,3 +106,4 @@
 - 테스트: 서버 3개(검색·연관·토큰), OpenAPI 26 operation 계약, E2E 2개 추가(실서버).
 - 운영 정리(2026-11-09, 승인): Released PV 2개 삭제(memonest 실패 볼륨 5Gi, monitoring/timescaledb 50Gi). **NFS CSI 컨트롤러가 NAS를 마운트하지 못해(`mount.nfs: mount system call failed`) PV 삭제 시 NAS 데이터가 지워지지 않음** — NAS 공간 확보는 CSI 문제 해결 또는 NAS에서 직접 정리 필요. 워크로드 없는 PVC 16개(minio 7×500Gi 등)는 소유 팀 확인 대기.
 - 위험: 자동화 토큰 요청 제한 없음(후속). pg_trgm 색인으로 저장 시 쓰기량 소폭 증가.
+- **배포(2026-11-09)**: 릴리스 rev 4, 이미지 `sha-eecf9e0`, 마이그레이션 004(pg_trgm 1.6, 색인 2개)·005 적용. 배포 중 `/readyz` 2초 간격 확인 전부 200(무중단), Postgres 재시작 없음. 도메인에서 검색·연관·토큰 API 비로그인/가짜 토큰 401 확인.
