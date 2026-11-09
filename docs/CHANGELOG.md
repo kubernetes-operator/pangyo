@@ -112,7 +112,7 @@
 - 앱: 줄 단위 콘솔 → **전체 화면 TUI**(ratatui 0.29): 관리/작성 F6 전환(폭 100칸 이상 두 칸), F2/F3 새 메모·폴더, 한글 2칸 폭 커서, Undo/Redo 250(단어 단위), Tab/Shift+Tab, Ctrl+S, 5초 자동 저장·메모 전환 전 자동 저장, 미저장 종료 경고, 상단 기기 상태·시계.
 - 기기 상태(`device.rs`): FreeBSD `sysctl hw.acpi.battery.*`, `ifconfig wlan0`(SSID·연결), `hccontrol read_scan_enable` / Linux sysfs. 셸 없이 고정 명령, 10초마다 별도 스레드.
 - 키오스크(`apps/bsd/kiosk/`): 전용 계정(셸=재실행 실행기, 암호 로그인 불가), ttyv0 gettytab 자동 로그인, 멱등 설치·`--dry-run`. 옛 `launch.sh` 제거.
-- 검증 도구: `scripts/bsd-vm-verify.py` — FreeBSD 15.0-RELEASE arm64 공식 이미지(SHA256 확인)를 QEMU(TCG)로 부팅, 시리얼 콘솔 자동 조작으로 pkg rust 설치·`cargo test`·release 빌드·pty에서 TUI 키 입력→저장·키오스크 설치 확인. 원본 이미지 불변(오버레이), `--reuse`.
+- 검증 도구: `scripts/bsd-vm-verify.py` — FreeBSD 15.1-RELEASE arm64 공식 이미지(SHA256 확인)를 QEMU(TCG)로 부팅, 시리얼 콘솔 자동 조작으로 pkg rust 설치·`cargo test`·release 빌드·pty에서 TUI 키 입력→저장·키오스크 설치 확인. 원본 이미지 불변(오버레이), `--reuse`.
 - 개발 서버: QEMU 10.2 설치(새 패키지 19개만, 기존 패키지 업그레이드 없음, 설정 유지 옵션).
 - CI: GitHub 러너 Ubuntu 26 전환으로 linuxdeploy(FUSE2 필요) 실행 실패 → `APPIMAGE_EXTRACT_AND_RUN=1`; Android 최신 NDK 30의 32비트 링커 없음 → 러너 LTS NDK, Gradle 다운로드 시간 초과 → 캐시·재시도; 번들 도구 504 → 재시도.
 - 테스트: TUI 16개(Linux).

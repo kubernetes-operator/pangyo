@@ -8,7 +8,8 @@
 """
 # === 0. 설정 변수 ===
 VM_DIR = "/var/tmp/memonest-vm"                                    # 이미지·로그 폴더 (저장소 밖)
-BASE_IMAGE = "FreeBSD-15.0-RELEASE-arm64-aarch64-ufs.qcow2"       # 공식 이미지 (SHA256 검증 후 압축 해제)
+BASE_IMAGE = "FreeBSD-15.1-RELEASE-arm64-aarch64-ufs.qcow2"       # 공식 이미지 (SHA256 검증 후 압축 해제)
+# 주의: pkg 저장소 패키지는 최신 마이너 버전 기준으로 빌드됨 → 15.0에서는 rust가 libc 버전 불일치로 실행 안 됨
 UEFI = "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"
 CPUS, MEMORY_MB, DISK_GB = 6, 4096, 24
 SOURCES = ["Cargo.toml", "Cargo.lock", "crates", "apps/bsd", "apps/native/src-tauri", "packages/protocol", "db"]
@@ -78,7 +79,7 @@ def main() -> int:
             print(f"[vm] 부팅 완료 ({time.monotonic() - started:.0f}초)", flush=True)
             child.sendline("root")
             time.sleep(3)
-            child.sendline("export PAGER=cat ASSUME_ALWAYS_YES=yes LANG=C.UTF-8")
+            child.sendline("export PAGER=cat ASSUME_ALWAYS_YES=yes LANG=C.UTF-8; set -o pipefail")  # 파이프 중간 실패도 실패로
             checks = {}
             checks["arch"] = sh(child, "uname -m -p -r && freebsd-version")
             checks["pkg_rust"] = sh(child, "pkg install -y rust >/dev/null && rustc --version && cargo --version", "pkg")
