@@ -270,22 +270,22 @@ async fn healthz() -> Json<serde_json::Value> {
 async fn readyz(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
     match state.db.get() {
         None if !state.database_configured() => {
-            Json(json!({ "status": "ok", "note": "sync_not_ready", "database": "not_configured" }))
+            Json(json!({ "status": "ok", "note": "local_only", "database": "not_configured" }))
                 .into_response()
         }
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "status": "unavailable", "note": "sync_not_ready", "database": "connecting" })),
+            Json(json!({ "status": "unavailable", "note": "sync_unavailable", "database": "connecting" })),
         )
             .into_response(),
         Some(db) => match sqlx::query("SELECT 1").execute(db).await {
-            Ok(_) => Json(json!({ "status": "ok", "note": "sync_not_ready", "database": "ok" }))
+            Ok(_) => Json(json!({ "status": "ok", "note": "sync_ready", "database": "ok" }))
                 .into_response(),
             Err(e) => {
                 tracing::warn!(error = %e, "readiness: database unreachable");
                 (
                     StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({ "status": "unavailable", "note": "sync_not_ready", "database": "error" })),
+                    Json(json!({ "status": "unavailable", "note": "sync_unavailable", "database": "error" })),
                 )
                     .into_response()
             }

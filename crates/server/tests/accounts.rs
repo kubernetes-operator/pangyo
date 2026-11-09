@@ -273,6 +273,7 @@ async fn readiness_and_info_report_database() {
         (ready.status, ready.json["database"].as_str()),
         (StatusCode::OK, Some("ok"))
     );
+    assert_eq!(ready.json["note"], "sync_ready");
     let info = app
         .call(Method::GET, "/api/v1/info", None, Auth::None)
         .await;
@@ -299,6 +300,7 @@ async fn server_starts_before_database_and_connects_later() {
         (ready.status, ready.json["database"].as_str()),
         (StatusCode::SERVICE_UNAVAILABLE, Some("connecting"))
     );
+    assert_eq!(ready.json["note"], "sync_unavailable");
     let r = app.register("early@example.com").await;
     assert_eq!(
         (r.status, r.json["error"].as_str()),

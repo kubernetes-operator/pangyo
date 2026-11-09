@@ -116,7 +116,7 @@ jobs:
             ~/.gradle/caches
           key: gradle-${{ runner.os }}-${{ hashFiles('apps/native/src-tauri/tauri.conf.json') }}
       - run: npm ci --no-audit --no-fund
-      - name: Android 프로젝트 생성 + 디버그 APK 빌드
+      - name: Android 프로젝트 생성 + 디버그 APK 빌드 (arm64)
         run: |
           # 러너 '최신' NDK(30+)는 32비트 대상 링커가 없어 실패 → 러너 기본(LTS) NDK 사용
           export NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK}"
@@ -131,7 +131,9 @@ jobs:
           grep -E '^(distributionUrl|networkTimeout)=' "$WRAPPER"
           # Gradle 배포판은 GitHub Releases에서 받음 → 504가 간헐적으로 나면 간격을 늘려 재시도 (성공 후엔 캐시 사용)
           for wait in 30 60 120 0; do
-            npm run -w apps/native android:build -- --debug --apk && exit 0
+            # 실제 휴대폰 대부분인 arm64만, Rust 디버그 정보 제외 → 설치 파일 크기 축소 (4개 ABI·디버그 정보 포함 시 약 460MB)
+            CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_STRIP=debuginfo \
+              npm run -w apps/native android:build -- --debug --apk --target aarch64 && exit 0
             [ "$wait" = 0 ] && break
             echo "::warning::APK 빌드 실패, ${wait}초 후 재시도 (Gradle 다운로드 504/시간 초과 등)"; sleep "$wait"
           done

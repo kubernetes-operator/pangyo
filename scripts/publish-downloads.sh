@@ -14,7 +14,7 @@ KEEP_VERSIONS="${KEEP_VERSIONS:-2}"              # 보관할 버전 수 (NAS 용
 REPO="${GITHUB_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 VERSION="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "${ROOT}/Cargo.toml" | head -1)"   # 줄 끝 주석 무시
 [[ -n "${VERSION}" ]] || { echo "Cargo.toml에서 버전을 읽지 못했습니다" >&2; exit 1; }
-MAX_FILE_MB="${MAX_FILE_MB:-200}"               # 이보다 큰 파일은 건너뜀 (디버그 APK 475MB 등, NAS 용량 고려)
+MAX_FILE_MB="${MAX_FILE_MB:-200}"               # 이보다 큰 파일은 건너뜀 (저장 용량 고려)
 WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"; kubectl --context "${KUBE_CONTEXT}" -n "${KUBE_NAMESPACE}" delete pod memonest-downloads-upload --ignore-not-found --wait=false >/dev/null 2>&1 || true' EXIT
 
 echo "[1/4] 실행 ${RUN_ID}의 설치 파일 받기 (${REPO})"
@@ -31,7 +31,7 @@ rules = [  # (id, 플랫폼, 설명, 파일 패턴)
     ("linux-deb", "Linux", "Debian/Ubuntu (.deb)", "*.deb"),
     ("linux-rpm", "Linux", "Fedora/RHEL (.rpm)", "*.rpm"),
     ("linux-appimage", "Linux", "AppImage (설치 없이 실행)", "*.AppImage"),
-    ("android-apk", "Android", "APK (디버그 빌드, 테스트용)", "*universal-debug.apk"),
+    ("android-apk", "Android", "APK (arm64, 디버그 서명, 테스트용)", "*-debug.apk"),
 ]
 files = []
 for fid, platform, label, pattern in rules:
