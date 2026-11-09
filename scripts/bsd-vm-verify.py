@@ -89,12 +89,8 @@ def main() -> int:
             checks["version"] = sh(child, "/root/src/target/release/memonest-bsd --version && file /root/src/target/release/memonest-bsd | tee /root/results/binary.txt")
             checks["tui"] = sh(child, "sh /root/src/apps/bsd/vm/tui-smoke.sh 2>&1 | tee /root/results/tui-smoke.log | tail -4 && grep -q TUI_SMOKE_OK /root/results/tui-smoke.log", "default")
             # 키오스크 설치: 두 번 실행해도 같은 결과(멱등), 계정 셸·자동 로그인 설정 확인
-            checks["kiosk"] = sh(child, "cd /root/src/apps/bsd/kiosk && sh install.sh /root/src/target/release/memonest-bsd --dry-run > /root/results/kiosk-dry.log"
-                                        " && sh install.sh /root/src/target/release/memonest-bsd > /root/results/kiosk-install.log"
-                                        " && sh install.sh /root/src/target/release/memonest-bsd > /root/results/kiosk-install2.log"
-                                        " && pw usershow memonest | tee /root/results/kiosk-user.txt | grep -q ':/usr/local/bin/memonest-kiosk$'"
-                                        " && grep -c '^memonest.autologin:' /etc/gettytab | grep -qx 1"
-                                        " && grep '^ttyv0' /etc/ttys | tee /root/results/kiosk-ttys.txt | grep -q memonest.autologin")
+            # 키오스크 설치: 시리얼 콘솔 한 줄 입력 한도 때문에 검사는 스크립트 파일로 (apps/bsd/vm/kiosk-check.sh)
+            checks["kiosk"] = sh(child, "sh /root/src/apps/bsd/vm/kiosk-check.sh 2>&1 | tail -3")
             sh(child, "tar -cf /dev/vtbd2 -C /root results")
             child.sendline("shutdown -p now")
             child.expect(pexpect.EOF, timeout=300)
