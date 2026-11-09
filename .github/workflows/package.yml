@@ -61,7 +61,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
       - run: npm ci --no-audit --no-fund
       - name: 설치 파일 빌드 (tauri build)
-        run: npm run -w apps/native bundle
+        # 번들 도구(WiX/NSIS/linuxdeploy)를 GitHub에서 내려받다 504 등 일시 오류가 나면 최대 3번 시도
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm run -w apps/native bundle && exit 0
+            echo "::warning::bundle 실패 (${attempt}/3), 30초 후 재시도"; sleep 30
+          done
+          exit 1
       - name: 실행 확인 (릴리스 앱)
         run: python scripts/desktop_smoke.py "${{ matrix.app }}"
         shell: bash
@@ -93,7 +100,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Android 프로젝트 생성 + 디버그 APK 빌드
         run: |
-          export NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
+          # 러너 '최신' NDK(30+)는 32비트 대상 링커가 없어 실패 → 러너 기본(LTS) NDK 사용
+          export NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK}"
+          echo "NDK: ${NDK_HOME}"
           npm run -w apps/native android:init -- --ci
           npm run -w apps/native android:build -- --debug --apk
       - uses: actions/upload-artifact@v7
