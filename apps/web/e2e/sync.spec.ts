@@ -33,7 +33,8 @@ async function createNote(page: Page, title: string, content: string) {
 }
 
 async function openNote(page: Page, title: string) {
-  await page.locator('#tree button.note', { hasText: title }).first().click();
+  const exact = new RegExp(`^· ${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(md|txt)$`);
+  await page.locator('#tree button.note', { hasText: exact }).first().click();
   await expect(page.locator('#title')).toHaveValue(title);
 }
 
@@ -105,4 +106,21 @@ test('다른 기기에 전달, 편집 중엔 읽기 전용, 오프라인 초안 
   await expect(a.locator('#tree')).toContainText('공유 (내 사본).md');
   await openNote(a, '공유 (내 사본)');
   await expect(a.locator('#editor')).toHaveValue(/\[오프라인 초안\]$/);
+});
+
+test('연관 메모: 비슷한 메모를 서버에서 찾아 보여주고 누르면 이동', async ({ browser }) => {
+  const email = `related-${Date.now()}@example.com`;
+  const page = await deviceFor(browser, email, true);
+  await createNote(page, '프로젝트 계획', '프로젝트 계획 회의 일정과 담당자 정리');
+  await createNote(page, '프로젝트 계획 2차', '프로젝트 계획 회의 일정 변경과 담당자');
+  await createNote(page, '장보기', '우유 계란 빵');
+  await synced(page);
+  await openNote(page, '프로젝트 계획');
+  const panel = page.locator('#related-panel');
+  await expect(panel).toBeVisible();
+  await panel.locator('summary').click();
+  await expect(page.locator('#related-list')).toContainText('프로젝트 계획 2차');
+  await expect(page.locator('#related-list')).not.toContainText('장보기');
+  await page.locator('#related-list button', { hasText: '프로젝트 계획 2차' }).click();
+  await expect(page.locator('#title')).toHaveValue('프로젝트 계획 2차');
 });

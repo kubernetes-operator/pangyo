@@ -59,3 +59,37 @@ test('JS에서 세션 쿠키를 읽을 수 없음 (HttpOnly)', async ({ page }) 
   const me = await page.evaluate(async () => (await fetch('/api/v1/account')).status);
   expect(me).toBe(200);
 });
+
+test('자동화 토큰(n8n): 만들기 → 원문 1회 표시 → 그 토큰으로 API 사용 → 해제', async ({ page }) => {
+  const email = `e2e-token-${Date.now()}@example.com`;
+  await page.goto('/');
+  await page.evaluate(
+    async ([email, password]) =>
+      fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-MemoNest-Request': '1' },
+        body: JSON.stringify({ email, password }),
+      }),
+    [email, PASSWORD],
+  );
+  await page.reload();
+  await page.locator('#account-btn').click();
+  const dialog = page.locator('#account-dialog');
+  await dialog.locator('#token-name').fill('n8n 테스트');
+  await dialog.locator('#token-create').click();
+  const created = dialog.locator('#token-created');
+  await expect(created).toHaveText(/^mn_pat_/);
+  const token = (await created.textContent())!;
+  await expect(dialog.locator('#token-list')).toContainText('n8n 테스트 (read');
+
+  // n8n처럼 Bearer 토큰으로 호출 (쿠키 없이)
+  const status = (t: string) =>
+    page.evaluate(
+      async (t) => (await fetch('/api/v1/notes?since=0', { credentials: 'omit', headers: { Authorization: `Bearer ${t}` } })).status,
+      t,
+    );
+  expect(await status(token)).toBe(200);
+  await dialog.locator('#token-list button').first().click();
+  await expect(dialog.locator('#token-list')).toContainText('발급한 토큰이 없습니다');
+  expect(await status(token)).toBe(401);
+});

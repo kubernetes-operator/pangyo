@@ -110,6 +110,40 @@ export const accountApi = {
   revokeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),
 };
 
+export interface IntegrationToken {
+  id: string;
+  name: string;
+  scopes: string[];
+  createdAt: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+export interface SearchHit {
+  id: string;
+  title: string;
+  folder: string;
+  format: 'md' | 'txt';
+  snippet: string;
+  score: number;
+}
+
+/** 자동화 토큰(n8n) 관리 — 웹 세션 전용 */
+export const tokenApi = {
+  list: () => request<IntegrationToken[]>('GET', '/integrations/tokens'),
+  create: (name: string, scopes: string[], ttlDays: number) =>
+    request<IntegrationToken & { token: string }>('POST', '/integrations/tokens', { name, scopes, ttlDays }),
+  revoke: (id: string) => request<void>('DELETE', `/integrations/tokens/${encodeURIComponent(id)}`),
+};
+
+/** 서버 검색·연관 메모 */
+export const searchApi = {
+  search: (q: string, limit = 20) =>
+    request<SearchHit[]>('GET', `/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  similar: (id: string, limit = 5) =>
+    request<SearchHit[]>('GET', `/notes/${encodeURIComponent(id)}/similar?limit=${limit}`),
+};
+
 /** 104857600 → '100 MB' */
 export function formatBytes(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

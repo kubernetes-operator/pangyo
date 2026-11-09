@@ -97,3 +97,12 @@
 - 운영 영향: 기존 Postgres/API 매니페스트 변경 없음(재시작 없음).
 - 후속: NAS 밖 사본(다른 장비/외부 S3), WAL 보관(PITR), 백업 실패 알림.
 - **적용(2026-11-09)**: 릴리스 rev 3(CronJob·PVC·ConfigMap 추가, NetworkPolicy 갱신, Postgres/API 재시작 없음). 첫 수동 백업 Job 성공: 덤프 16K, 임시 Postgres 복원 검증 성공(마이그레이션 3, 계정 0, 메모 0). 이후 매일 03:00 자동 실행.
+
+## Unreleased — 로드맵 07단계: 서버 검색·연관 메모·n8n 토큰 (`feature/roadmap07-search-n8n`)
+- 서버: `db/postgres/004_search.sql`(pg_trgm GIN), `005_integration_tokens.sql`; `GET /search`, `GET /notes/{id}/similar`, `GET/POST /integrations/tokens`, `DELETE /integrations/tokens/{id}`; 모든 노트·계정 API 범위 검사(`insufficient_scope`), 임대 보유자에 토큰 구분.
+- 웹: 계정 화면 자동화 토큰(만들기·원문 1회·목록·해제), 메모 화면 '연관 메모'(펼칠 때만 요청).
+- 문서: `docs/14_N8N.md`(n8n 사용법), `docs/15_CLOUD_ADAPTERS.md`(07-3 설계안·결정 요청).
+- 발견·수정: 본문 일치가 제목 일치보다 앞서던 검색 순위 → 제목 가산점 2.
+- 테스트: 서버 3개(검색·연관·토큰), OpenAPI 26 operation 계약, E2E 2개 추가(실서버).
+- 운영 정리(2026-11-09, 승인): Released PV 2개 삭제(memonest 실패 볼륨 5Gi, monitoring/timescaledb 50Gi). **NFS CSI 컨트롤러가 NAS를 마운트하지 못해(`mount.nfs: mount system call failed`) PV 삭제 시 NAS 데이터가 지워지지 않음** — NAS 공간 확보는 CSI 문제 해결 또는 NAS에서 직접 정리 필요. 워크로드 없는 PVC 16개(minio 7×500Gi 등)는 소유 팀 확인 대기.
+- 위험: 자동화 토큰 요청 제한 없음(후속). pg_trgm 색인으로 저장 시 쓰기량 소폭 증가.

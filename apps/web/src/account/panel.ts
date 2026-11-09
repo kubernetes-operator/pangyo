@@ -1,7 +1,7 @@
 // === 계정 화면 (로드맵 05): 로그인/가입/로그아웃, 용량, 장비 등록 코드, 장비 목록 ===
 // 메모 자체는 계속 이 기기에만 저장됩니다 (동기화는 로드맵 06).
 import type { Locale } from '../settings';
-import { accountApi, ApiError, formatBytes, ServerUnavailable, type Account } from './api';
+import { accountApi, ApiError, formatBytes, ServerUnavailable, tokenApi, type Account } from './api';
 
 // === 0. 문구 (ko/en) ===
 const TEXT: Record<Locale, Record<string, string>> = {
@@ -28,6 +28,15 @@ const TEXT: Record<Locale, Record<string, string>> = {
     revoke: '해제',
     revoked: '해제됨',
     googleSoon: 'Google 로그인은 준비 중입니다.',
+    tokens: '자동화 토큰 (n8n)',
+    tokenName: '이름 (예: n8n 업무 자동화)',
+    tokenWrite: '쓰기 허용 (메모 수정)',
+    tokenTtl: '만료',
+    tokenCreate: '토큰 만들기',
+    tokenOnce: '지금만 보입니다. n8n의 Header Auth 자격 증명(Authorization: Bearer …)에 저장하세요.',
+    tokenNone: '발급한 토큰이 없습니다.',
+    days: '일',
+    expired: '만료됨',
   },
   en: {
     title: 'Account',
@@ -52,6 +61,15 @@ const TEXT: Record<Locale, Record<string, string>> = {
     revoke: 'Revoke',
     revoked: 'revoked',
     googleSoon: 'Google sign-in is coming.',
+    tokens: 'Automation tokens (n8n)',
+    tokenName: 'Name (e.g. n8n workflow)',
+    tokenWrite: 'Allow writes (edit notes)',
+    tokenTtl: 'Expires in',
+    tokenCreate: 'Create token',
+    tokenOnce: 'Shown only now. Save it in n8n as a Header Auth credential (Authorization: Bearer …).',
+    tokenNone: 'No tokens yet.',
+    days: 'days',
+    expired: 'expired',
   },
 };
 
@@ -204,8 +222,68 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       message(t('pairHelp')),
       el('h3', {}, t('devices')),
       deviceList,
+      ...tokenSection(),
     );
     await renderDevices(deviceList);
+  }
+
+  /** 자동화 토큰(n8n): 만들기(원문 1회 표시)·목록·해제 */
+  function tokenSection(): Node[] {
+    const list = el('ul', { className: 'device-list', id: 'token-list' });
+    const name = el('input', { type: 'text', id: 'token-name', maxLength: 60, placeholder: t('tokenName') });
+    const write = el('input', { type: 'checkbox', id: 'token-write' });
+    const ttl = el('select', { id: 'token-ttl' });
+    for (const d of [30, 90, 365]) ttl.append(el('option', { value: String(d), selected: d === 90 }, `${d} ${t('days')}`));
+    const created = el('pre', { id: 'token-created', className: 'pairing-code', hidden: true });
+    const createdHelp = message(t('tokenOnce'));
+    createdHelp.hidden = true;
+    const status = message('', 'error');
+    const button = el('button', { type: 'button', id: 'token-create' }, t('tokenCreate'));
+    button.onclick = async () => {
+      status.textContent = '';
+      try {
+        const scopes = write.checked ? ['notes:read', 'notes:write'] : ['notes:read'];
+        const result = await tokenApi.create(name.value || 'n8n', scopes, Number(ttl.value));
+        created.textContent = result.token;
+        created.hidden = false;
+        createdHelp.hidden = false;
+        name.value = '';
+        await renderTokens(list);
+      } catch (e) {
+        status.textContent = e instanceof ApiError ? e.message : t('unavailable');
+      }
+    };
+    void renderTokens(list);
+    return [
+      el('h3', {}, t('tokens')),
+      el('div', { className: 'account-form' }, name, el('label', { className: 'inline' }, write, t('tokenWrite')),
+        el('label', { className: 'inline' }, t('tokenTtl'), ttl), button, status),
+      created,
+      createdHelp,
+      list,
+    ];
+  }
+
+  async function renderTokens(list: HTMLUListElement) {
+    const tokens = await tokenApi.list().catch(() => []);
+    const live = tokens.filter((x) => !x.revokedAt);
+    if (!live.length) {
+      list.replaceChildren(el('li', { className: 'muted' }, t('tokenNone')));
+      return;
+    }
+    list.replaceChildren(
+      ...live.map((x) => {
+        const expired = Date.parse(x.expiresAt) < Date.now();
+        const revoke = el('button', { type: 'button' }, t('revoke'));
+        revoke.onclick = async () => {
+          await tokenApi.revoke(x.id).catch(() => undefined);
+          await renderTokens(list);
+        };
+        const scope = x.scopes.includes('notes:write') ? 'read+write' : 'read';
+        const until = expired ? t('expired') : `~${new Date(x.expiresAt).toLocaleDateString()}`;
+        return el('li', { dataset: { tokenId: x.id } }, `${x.name} (${scope}, ${until}) `, revoke);
+      }),
+    );
   }
 
   async function renderDevices(list: HTMLUListElement) {

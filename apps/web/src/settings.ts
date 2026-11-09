@@ -36,6 +36,7 @@ export const WORDS: Record<Locale, Record<string, string>> = {
     typingTime: '작성',
     openTime: '열림',
     account: '계정',
+    related: '연관 메모',
   },
   en: {
     folders: 'Folders',
@@ -54,6 +55,7 @@ export const WORDS: Record<Locale, Record<string, string>> = {
     typingTime: 'Typing',
     openTime: 'Open',
     account: 'Account',
+    related: 'Related notes',
   },
 };
 

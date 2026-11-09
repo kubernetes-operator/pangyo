@@ -3,7 +3,7 @@ import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
-import { accountApi, type Account } from '../account/api';
+import { accountApi, searchApi, type Account } from '../account/api';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
 import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
@@ -189,6 +189,45 @@ function renderEditor(): void {
   renderSessions();
   setReadOnly(state.lease?.kind === 'denied');
   renderSyncInfo();
+  renderRelated();
+}
+
+/** 연관 메모 (로드맵 07): 동기화 중이고 서버에 있는 메모일 때만. 펼쳤을 때만 서버에 요청 */
+function renderRelated(): void {
+  const panel = $<HTMLDetailsElement>('related-panel');
+  const note = state.note;
+  const available = !!state.sync && !!note?.sync && note.sync.version > 0;
+  panel.hidden = !available;
+  if (available && panel.open) void loadRelated();
+}
+
+async function loadRelated(): Promise<void> {
+  const note = state.note;
+  const list = $('related-list');
+  if (!note) return;
+  const hits = await searchApi.similar(note.id).catch(() => []);
+  if (state.note !== note) return;
+  list.replaceChildren(
+    ...hits
+      .filter((h) => state.notes.some((n) => n.id === h.id))
+      .map((h) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = `${h.folder ? h.folder + '/' : ''}${h.title}.${h.format}`;
+        const small = document.createElement('small');
+        small.textContent = h.snippet.slice(0, 80);
+        b.append(small);
+        b.onclick = () => void selectNote(h.id);
+        li.append(b);
+        return li;
+      }),
+  );
+  if (!list.childElementCount) {
+    const li = document.createElement('li');
+    li.textContent = '—';
+    list.append(li);
+  }
 }
 
 // ---------- 동기화 (로드맵 06) ----------
@@ -571,6 +610,7 @@ function bindEvents(): void {
     });
     accountButton.onclick = () => void panel.open();
   }
+  $<HTMLDetailsElement>('related-panel').addEventListener('toggle', () => renderRelated());
   // 편집 시작 = 에디터/제목에 들어갈 때 임대 요청 (열기만 해서는 잠그지 않음)
   editor().addEventListener('focus', () => void requestEdit());
   $<HTMLInputElement>('title').addEventListener('focus', () => void requestEdit());
