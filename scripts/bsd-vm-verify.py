@@ -62,7 +62,8 @@ def main() -> int:
         r.truncate(64 * 1024 * 1024)
     print(f"[host] 소스 {len(files)}개 파일, 오버레이 {DISK_GB}G 준비", flush=True)
 
-    cmd = ["qemu-system-aarch64", "-M", "virt", "-cpu", "max", "-smp", str(CPUS), "-m", str(MEMORY_MB),
+    cmd = ["qemu-system-aarch64", "-M", "virt", "-cpu", "cortex-a72",  # max는 pauth 에뮬레이션으로 매우 느림
+            "-smp", str(CPUS), "-m", str(MEMORY_MB),
            "-bios", UEFI, "-nographic",
            "-drive", f"if=virtio,file={overlay},format=qcow2",
            "-drive", f"if=virtio,file={source},format=raw,readonly=on",
