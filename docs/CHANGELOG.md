@@ -107,3 +107,13 @@
 - 운영 정리(2026-11-09, 승인): Released PV 2개 삭제(memonest 실패 볼륨 5Gi, monitoring/timescaledb 50Gi). **NFS CSI 컨트롤러가 NAS를 마운트하지 못해(`mount.nfs: mount system call failed`) PV 삭제 시 NAS 데이터가 지워지지 않음** — NAS 공간 확보는 CSI 문제 해결 또는 NAS에서 직접 정리 필요. 워크로드 없는 PVC 16개(minio 7×500Gi 등)는 소유 팀 확인 대기.
 - 위험: 자동화 토큰 요청 제한 없음(후속). pg_trgm 색인으로 저장 시 쓰기량 소폭 증가.
 - **배포(2026-11-09)**: 릴리스 rev 4, 이미지 `sha-eecf9e0`, 마이그레이션 004(pg_trgm 1.6, 색인 2개)·005 적용. 배포 중 `/readyz` 2초 간격 확인 전부 200(무중단), Postgres 재시작 없음. 도메인에서 검색·연관·토큰 API 비로그인/가짜 토큰 401 확인.
+
+## Unreleased — 로드맵 08단계: FreeBSD arm64 전용 장비 (`feature/roadmap08-bsd-tui`)
+- 앱: 줄 단위 콘솔 → **전체 화면 TUI**(ratatui 0.29): 관리/작성 F6 전환(폭 100칸 이상 두 칸), F2/F3 새 메모·폴더, 한글 2칸 폭 커서, Undo/Redo 250(단어 단위), Tab/Shift+Tab, Ctrl+S, 5초 자동 저장·메모 전환 전 자동 저장, 미저장 종료 경고, 상단 기기 상태·시계.
+- 기기 상태(`device.rs`): FreeBSD `sysctl hw.acpi.battery.*`, `ifconfig wlan0`(SSID·연결), `hccontrol read_scan_enable` / Linux sysfs. 셸 없이 고정 명령, 10초마다 별도 스레드.
+- 키오스크(`apps/bsd/kiosk/`): 전용 계정(셸=재실행 실행기, 암호 로그인 불가), ttyv0 gettytab 자동 로그인, 멱등 설치·`--dry-run`. 옛 `launch.sh` 제거.
+- 검증 도구: `scripts/bsd-vm-verify.py` — FreeBSD 15.0-RELEASE arm64 공식 이미지(SHA256 확인)를 QEMU(TCG)로 부팅, 시리얼 콘솔 자동 조작으로 pkg rust 설치·`cargo test`·release 빌드·pty에서 TUI 키 입력→저장·키오스크 설치 확인. 원본 이미지 불변(오버레이), `--reuse`.
+- 개발 서버: QEMU 10.2 설치(새 패키지 19개만, 기존 패키지 업그레이드 없음, 설정 유지 옵션).
+- CI: GitHub 러너 Ubuntu 26 전환으로 linuxdeploy(FUSE2 필요) 실행 실패 → `APPIMAGE_EXTRACT_AND_RUN=1`; Android 최신 NDK 30의 32비트 링커 없음 → 러너 LTS NDK, Gradle 다운로드 시간 초과 → 캐시·재시도; 번들 도구 504 → 재시도.
+- 테스트: TUI 16개(Linux).
+- 미검증(실기기 필요): 보드·2화면·Wi-Fi/BT 칩셋 실제 출력·배터리 센서, **콘솔 한글 입력기 없음**(vt), 한글 글꼴.
