@@ -134,3 +134,5 @@
 - Android CI: arm64만, Rust 디버그 정보 제외(`CARGO_PROFILE_DEV_DEBUG=0`, `STRIP=debuginfo`) → CI 결과 APK **475MB → 29MB**(arm64-v8a만 포함 확인). 게시 스크립트는 `*-debug.apk`를 찾음.
 - 운영: API 롤링 설정(preStop 8초, maxUnavailable 0) rev 6 배포 — 이미지 변경 없음, `/healthz` 30/30 200. 외부 경로(Cloudflare→게이트웨이) 응답이 1~4초로 느림, API 자체는 약 20ms.
 - 테스트: 서버 테스트(실 Postgres) 통과.
+- **배포(2026-11-11)**: PR #3 병합(main `c6f7802`) 후 릴리스 rev 7, 이미지 `sha-b130ec5` → `sha-c6f7802`(값·차트·마이그레이션 변경 없음). `/readyz` → `{"database":"ok","note":"sync_ready","status":"ok"}`. 배포 중 외부 `/healthz` 2초 간격 60회 중 56회 200, 4회 5초 제한 초과(간헐적으로 떨어져 발생, 배포 후에도 응답 5.3초 1회 관측 → 외부 경로 지연으로 추정, 롤링 중단 여부는 미확정).
+- **설치 파일 게시(2026-11-11)**: package 실행 42850476933 — Windows .msi/.exe, macOS .dmg, Linux .deb/.rpm/.AppImage, **Android arm64 디버그 APK 29MB 첫 게시**. 다운로드 PVC 사용량 131.6MB, 버전 0.1.0 교체.
