@@ -26,11 +26,21 @@
     },
     "/readyz": {
       "get": {
-        "summary": "Readiness (외부 저장소 미사용)",
+        "summary": "Readiness (DB 연결 확인, 끊기면 503)",
         "x-memonest-status": "implemented",
         "responses": {
           "200": {
             "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DB 연결 중 또는 오류",
             "content": {
               "application/json": {
                 "schema": {
@@ -1550,12 +1560,18 @@
         ],
         "properties": {
           "status": {
-            "const": "ok"
+            "enum": [
+              "ok",
+              "unavailable"
+            ]
           },
           "note": {
             "type": "string",
-            "examples": [
-              "sync_not_ready"
+            "description": "sync_ready: DB 연결·동기화 가능 / sync_unavailable: DB 연결 중·오류 / local_only: DB 미설정(계정·동기화 없음)",
+            "enum": [
+              "sync_ready",
+              "sync_unavailable",
+              "local_only"
             ]
           },
           "database": {

@@ -127,3 +127,10 @@
 - 테스트: 서버 3개(경로 비노출·토큰 링크·재다운로드·잘못된 토큰·저장소 밖 경로 제외·비로그인/자동화 토큰 거부·미설정 503), 계약 28 operation, E2E 1개(브라우저 다운로드 파일 내용 확인).
 - 위험: NAS(90%) 사용, 링크는 5분 안에 공유되면 다른 사람도 받을 수 있음(로그인 사용자만 발급). iOS는 시뮬레이터 빌드라 제외.
 - **배포(2026-11-09)**: 릴리스 rev 5, 이미지 `sha-b130ec5`, 마이그레이션 006, 다운로드 PVC 2Gi(RWX). 배포 중 2초 간격 확인 7회 중 2회 실패(502·응답 없음) → 차트에 `maxUnavailable: 0`, `preStop sleep 8s` 추가(다음 배포부터). 게시: 실행 42572153752의 Windows .msi/.exe, macOS .dmg, Linux .deb/.rpm/.AppImage (102MB). 디버그 APK 464MB는 용량 문제로 제외(`MAX_FILE_MB` 기본 200) — 릴리스(arm64 전용) APK 빌드는 후속. 스크립트 수정: Cargo.toml 버전 줄 주석 때문에 버전을 못 읽던 문제.
+
+## Unreleased — 정리: 준비 상태 문구, Android 설치 파일 축소 (`feature/roadmap09-cleanup`)
+- 변경 파일: `crates/server/src/lib.rs`, `crates/server/tests/accounts.rs`, `packages/protocol/openapi.json`, `.github/workflows/package.yml`, `scripts/publish-downloads.sh`.
+- `/readyz`의 `note`: 동기화 구현 전 문구 `sync_not_ready` → `sync_ready`(DB 정상) / `sync_unavailable`(DB 연결 중·오류, 503) / `local_only`(DB 미설정). OpenAPI에 값 목록과 503 응답 추가.
+- Android CI: arm64만, Rust 디버그 정보 제외(`CARGO_PROFILE_DEV_DEBUG=0`, `STRIP=debuginfo`) → CI 결과 APK **475MB → 29MB**(arm64-v8a만 포함 확인). 게시 스크립트는 `*-debug.apk`를 찾음.
+- 운영: API 롤링 설정(preStop 8초, maxUnavailable 0) rev 6 배포 — 이미지 변경 없음, `/healthz` 30/30 200. 외부 경로(Cloudflare→게이트웨이) 응답이 1~4초로 느림, API 자체는 약 20ms.
+- 테스트: 서버 테스트(실 Postgres) 통과.
