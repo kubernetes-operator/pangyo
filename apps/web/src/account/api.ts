@@ -49,12 +49,26 @@ export class ApiError extends Error {
 /** 서버에 연결할 수 없음 (오프라인, 서버 없는 로컬 실행 등) */
 export class ServerUnavailable extends Error {}
 
-export async function request<T>(
+/** 서버 응답 원본 (전송 방식과 무관하게 같은 모양) */
+export interface RawResponse {
+  status: number;
+  /** JSON 응답이면 true (아니면 정적 서버 등 → '서버 없음') */
+  json: boolean;
+  data: unknown;
+}
+
+/**
+ * 요청 전송 방식. 웹은 같은 출처 fetch(세션 쿠키), 데스크톱·모바일 앱은 Tauri 명령(장비 토큰, storage/tauri.ts).
+ * 연결할 수 없으면 ServerUnavailable을 던집니다.
+ */
+export type Transport = (
   method: string,
   path: string,
-  body?: unknown,
-  options: { keepalive?: boolean } = {},
-): Promise<T> {
+  body: unknown,
+  options: { keepalive?: boolean },
+) => Promise<RawResponse>;
+
+const fetchTransport: Transport = async (method, path, body, options) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
@@ -76,12 +90,30 @@ export async function request<T>(
   } finally {
     clearTimeout(timer);
   }
+  if (response.status === 204) return { status: 204, json: true, data: undefined };
+  const json = !!response.headers.get('content-type')?.includes('application/json');
+  return { status: response.status, json, data: json ? await response.json() : undefined };
+};
+
+let transport: Transport = fetchTransport;
+
+/** 데스크톱·모바일 앱에서 장비 토큰 전송으로 바꿀 때 (storage/tauri.ts) */
+export function setTransport(next: Transport): void {
+  transport = next;
+}
+
+export async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options: { keepalive?: boolean } = {},
+): Promise<T> {
+  const response = await transport(method, path, body, options);
   if (response.status === 204) return undefined as T;
-  const isJson = response.headers.get('content-type')?.includes('application/json');
-  const data: unknown = isJson ? await response.json() : undefined;
-  if (!isJson) throw new ServerUnavailable(`unexpected response ${response.status}`); // 정적 서버 등
-  if (!response.ok) {
-    const err = data as { error?: string; message?: string; details?: Record<string, unknown> };
+  if (!response.json) throw new ServerUnavailable(`unexpected response ${response.status}`); // 정적 서버 등
+  const data = response.data;
+  if (response.status < 200 || response.status >= 300) {
+    const err = (data ?? {}) as { error?: string; message?: string; details?: Record<string, unknown> };
     if (['database_not_configured', 'database_connecting', 'not_implemented'].includes(err.error ?? '')) {
       throw new ServerUnavailable(err.error);
     }

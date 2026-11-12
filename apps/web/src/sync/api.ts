@@ -32,6 +32,14 @@ export const syncApi: SyncApi = {
         keepalive,
       }),
     ),
+  remove: (id, baseVersion, clientId, fencingToken) =>
+    call(() =>
+      request<ServerNote>(
+        'DELETE',
+        `${notePath(id)}?baseVersion=${baseVersion}&clientId=${encodeURIComponent(clientId)}` +
+          (fencingToken === null ? '' : `&fencingToken=${fencingToken}`),
+      ),
+    ),
 };
 
 /** 이 브라우저 탭을 다른 탭/기기와 구별하는 ID (탭마다 다름 → 같은 브라우저의 두 탭도 서로 막음) */

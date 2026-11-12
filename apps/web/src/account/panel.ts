@@ -10,7 +10,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     close: '닫기',
     loading: '확인 중…',
     unavailable: '서버에 연결되어 있지 않습니다. 메모는 이 기기에서 계속 쓸 수 있습니다.',
-    note: '계정이 있어도 메모는 아직 이 기기에만 저장됩니다 (동기화는 준비 중).',
+    note: '로그인하면 이 브라우저의 메모가 계정과 동기화됩니다. 데스크톱/모바일 앱은 아래 등록 코드로 연결하세요.',
     login: '로그인',
     register: '가입',
     email: '이메일',
@@ -22,7 +22,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     logout: '로그아웃',
     storage: '저장 공간',
     pair: '장비 등록 코드 만들기',
-    pairHelp: '데스크톱/모바일 앱에서 10분 안에 입력하세요 (앱 연결은 준비 중).',
+    pairHelp: '데스크톱/모바일 앱의 "계정 → 장비 연결"에 서버 주소와 코드를 10분 안에 입력하세요.',
+    serverAddress: '서버 주소',
     devices: '등록된 장비',
     noDevices: '등록된 장비가 없습니다.',
     revoke: '해제',
@@ -47,7 +48,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     close: 'Close',
     loading: 'Checking…',
     unavailable: 'Not connected to a server. Notes keep working on this device.',
-    note: 'Notes are still stored only on this device (sync is coming).',
+    note: 'While signed in, notes in this browser sync with your account. Link desktop/mobile apps with a pairing code below.',
     login: 'Log in',
     register: 'Sign up',
     email: 'Email',
@@ -59,7 +60,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     logout: 'Log out',
     storage: 'Storage',
     pair: 'Create device pairing code',
-    pairHelp: 'Enter it in the desktop/mobile app within 10 minutes (app linking coming).',
+    pairHelp: 'Enter the server address and code in the desktop/mobile app (Account → Device link) within 10 minutes.',
+    serverAddress: 'Server address',
     devices: 'Devices',
     noDevices: 'No devices yet.',
     revoke: 'Revoke',
@@ -198,6 +200,7 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
     const percent = account.quotaBytes > 0 ? Math.min(100, (account.usedBytes / account.quotaBytes) * 100) : 0;
     const meter = el('meter', { min: 0, max: account.quotaBytes, value: account.usedBytes });
     const codeBox = el('p', { id: 'pairing-code', className: 'pairing-code' });
+    const serverBox = el('p', { id: 'pairing-server', className: 'muted' });
     const deviceList = el('ul', { className: 'device-list', id: 'device-list' });
     const logout = el('button', { type: 'button', id: 'account-logout' }, t('logout'));
     logout.onclick = async () => {
@@ -211,6 +214,7 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       try {
         const p = await accountApi.pairingStart();
         codeBox.textContent = `${p.code} · ~${new Date(p.expiresAt).toLocaleTimeString()}`;
+        serverBox.textContent = `${t('serverAddress')}: ${location.origin}`;
       } catch (e) {
         codeBox.textContent = e instanceof ApiError ? e.message : t('unavailable');
       }
@@ -227,6 +231,7 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       message(t('note')),
       el('div', { className: 'toolbar' }, pair, logout),
       codeBox,
+      serverBox,
       message(t('pairHelp')),
       el('h3', {}, t('devices')),
       deviceList,

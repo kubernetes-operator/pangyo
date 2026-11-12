@@ -13,6 +13,11 @@ export interface NoteRepository {
   listNotes(): Promise<Note[]>;
   /** 새 메모 저장 또는 기존 메모 갱신. 파일 저장소에서는 제목/폴더/형식이 바뀌면 파일 이름도 바뀝니다. */
   saveNote(note: Note): Promise<void>;
+  /**
+   * (선택) 편집 세션 기록만 저장. 파일 저장소에서 열어 두기만 한 메모의 주기 저장이
+   * 바깥 편집기에서 고친 본문을 덮어쓰지 않게 합니다 (ADR-0004). 없으면 saveNote를 씁니다.
+   */
+  saveSessions?(note: Note): Promise<void>;
   /** 메모 삭제 (다른 기기에서 삭제된 메모를 동기화로 반영할 때) */
   deleteNote(id: string): Promise<void>;
   listFolders(): Promise<FolderRecord[]>;

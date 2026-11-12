@@ -136,3 +136,12 @@
 - 테스트: 서버 테스트(실 Postgres) 통과.
 - **배포(2026-11-11)**: PR #3 병합(main `c6f7802`) 후 릴리스 rev 7, 이미지 `sha-b130ec5` → `sha-c6f7802`(값·차트·마이그레이션 변경 없음). `/readyz` → `{"database":"ok","note":"sync_ready","status":"ok"}`. 배포 중 외부 `/healthz` 2초 간격 60회 중 56회 200, 4회 5초 제한 초과(간헐적으로 떨어져 발생, 배포 후에도 응답 5.3초 1회 관측 → 외부 경로 지연으로 추정, 롤링 중단 여부는 미확정).
 - **설치 파일 게시(2026-11-11)**: package 실행 42850476933 — Windows .msi/.exe, macOS .dmg, Linux .deb/.rpm/.AppImage, **Android arm64 디버그 APK 29MB 첫 게시**. 다운로드 PVC 사용량 131.6MB, 버전 0.1.0 교체.
+
+## Unreleased — 로드맵 06 마무리: 데스크톱·모바일 앱 동기화 연결 (`feature/roadmap06-device-sync`, ADR-0004)
+- 변경 파일: `apps/native/src-tauri/src/{remote.rs(신규),lib.rs}`·`Cargo.toml`(ureq rustls+ring, 데스크톱 keyring 3, 시험 전용 `e2e` feature)·`tauri.conf.json`(설명 문구), `crates/core/src/workspace.rs`(바깥 편집·이름 변경·삭제 처리, `save_sessions`, `list/forget_external_deletion`), `db/sqlite/005_external_deletions.sql`(신규), `apps/web/src/account/{api.ts(전송 방식 분리),device-panel.ts(신규),panel.ts(서버 주소 표시·문구)}`, `apps/web/src/storage/{tauri.ts,repository.ts}`, `apps/web/src/sync/{engine.ts,api.ts}`(서버 삭제·다시 받기), `apps/web/src/ui/{app.ts,sync-view.ts}`, `scripts/desktop_sync_check.py`(신규), `Makefile`(`desktop-sync-check`), docs 08/12, ADR-0004.
+- 동작: 앱 '계정' → **장비 연결**(서버 주소 + 웹에서 만든 등록 코드 + 장비 이름). 장비 토큰은 Rust 쪽 OS 보안 저장소에만 있고 화면에는 오지 않음. 동기화 규칙은 웹과 같음(편집 임대·읽기 전용·충돌 보관·오프라인 초안). 20초마다 디스크를 다시 읽어 **앱 밖 편집은 올림**, **앱 밖 이름 변경은 같은 ID로**, **앱 밖 삭제는 확인 후**(서버에서도 삭제 / 다시 받기). 웹에서 장비를 폐기하면 앱은 동기화를 멈추고 다시 연결 안내.
+- 함께 고친 기존 버그(데스크톱): 열어 두기만 한 메모를 10초마다 저장할 때 본문까지 다시 써서 **바깥 편집기에서 고친 내용을 덮어쓰던 문제** → 본문을 바꾸지 않았으면 세션 기록만 저장.
+- 서버·API 변경 없음(기존 `/pairing/*`, Bearer 장비 토큰, `DELETE /notes/{id}` 사용). 서버 배포 불필요. 웹은 계정 화면 문구와 서버 주소 표시만 바뀜.
+- 테스트: `make check` 통과 — Web 단위 80개(엔진 바깥 삭제 4개 추가) + E2E 16개(실서버 포함), core 작업공간 14개(신규 5), native 2개(서버 주소·허용 경로), 서버 DB 테스트. **`make desktop-sync-check` 7/7 통과**(Linux Xvfb, 실제 앱 화면 조작, 격리 키링): 장비 연결, 파일→서버, 서버→파일, 바깥 편집, 바깥 이름 변경(같은 ID), 바깥 삭제 보관→화면에서 서버 삭제, 토큰이 앱 데이터에 없음, 장비 폐기 시 중지 안내.
+- 위험: Windows·macOS는 CI 빌드만, **실제 키체인/자격 증명 관리자 동작 미확인**. Android는 토큰을 앱 전용 폴더에 평문 보관(루팅 기기에서 노출 가능, Keystore 연동은 후속), 실기기 미확인. Linux에서 Secret Service(키링)가 없으면 연결할 수 없음(안내 문구 표시, 등록 코드는 쓰지 않음). 바깥 이름 변경과 동시에 내용도 바꾸면 '삭제 + 새 메모'로 처리됨. 동기화 주기마다 전체 폴더를 다시 읽음(메모 수천 개면 느릴 수 있음, 파일 감시는 후속).
+- 후속: Windows/macOS/Android 실기 확인, Android Keystore, 파일 변경 감시(notify), iOS, BSD TUI 동기화(08단계).
