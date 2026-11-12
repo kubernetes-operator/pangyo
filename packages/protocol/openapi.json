@@ -1468,7 +1468,7 @@
         }
       ],
       "post": {
-        "summary": "일회성 다운로드 주소 발급 (/dl/<토큰>, 5분 유효). 받기: GET /dl/{token} (응답 시간 제한 없음, 스트리밍)",
+        "summary": "일회용 다운로드 주소 발급 (/dl/<토큰>, 5분 유효). 받기: GET /dl/{token} (응답 시간 제한 없음, 스트리밍). 끝까지 받으면 링크가 닫히고, 받는 중에는 같은 링크의 다른 요청은 404. 중간에 끊기면 유효 시간 안에서 재시도 가능",
         "x-memonest-status": "implemented",
         "x-requires-database": true,
         "security": [

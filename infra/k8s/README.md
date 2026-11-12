@@ -24,7 +24,7 @@ helm upgrade --install memonest-api infra/k8s/helm/memonest \
 - 확인: `kubectl -n <namespace> get pods,svc,pvc,httproute`, `curl https://<도메인>/readyz` → `"database":"ok"`.
 
 ## 설치 파일 배포
-- 웹 앱 → 계정 → **설치 파일**: 로그인 사용자에게 목록 표시, **받기**를 누르면 5분 유효한 임의 주소(`/dl/<토큰>`)로 내려받음. 실제 저장 위치·버전 폴더는 드러나지 않음.
+- 웹 앱 → 계정 → **설치 파일**: 로그인 사용자에게 목록 표시, **받기**를 누르면 5분 유효한 **일회용** 임의 주소(`/dl/<토큰>`)로 내려받음(끝까지 받으면 링크가 닫히고, 받는 중 같은 링크의 다른 요청은 거절, 중간에 끊기면 5분 안에 재시도 가능 — 다시 받으려면 **받기**를 한 번 더). 실제 저장 위치·버전 폴더는 드러나지 않음.
 - 저장: PVC `<릴리스>-downloads`(2Gi, RWX, uninstall 후에도 유지), API는 읽기 전용 마운트.
 - 게시(운영 변경, 승인 후): `./scripts/publish-downloads.sh <package 워크플로 실행 ID>` — GitHub 결과물 받기 → 임시 Pod로 복사 → 목록 파일은 마지막에 교체(받는 중인 사용자 영향 없음) → 최근 2개 버전만 보관.
 
