@@ -24,6 +24,12 @@
     **차트에 새 기본값이 추가된 업그레이드는 `--reuse-values` 대신 `--reset-then-reuse-values`**(Helm 3.14+) — `--reuse-values`는 새 차트의
     기본값을 무시해 `monitoring.alerts.*`가 비고, 운영자 webhook이 PrometheusRule을 거부함(2026-11-12 rev 9 실패, 클러스터 변경 없음).
     **알림 전달은 클러스터 Alertmanager에 달려 있음** — 2026-11-12 확인 시 공용 Alertmanager가 저장소 설정 누락으로 실행되지 않는 상태(별도 조치 필요).
+- **외부 경로 지연 조사(2026-11-12, 조회·측정만)**: 외부 `/healthz` 응답 0.4~9초, 배포 중 5초 시간 초과가 가끔 나던 원인.
+  - 구간별: 서버 내부 p99 5ms / LAN에서 게이트웨이 직접 HTTPS 약 20ms / Cloudflare 경유 TTFB p50 1.4초·p90 4.8초(40회, 모두 게이트웨이 도착 — 유실 아님, 5초 넘게 늦은 것).
+  - 한국(`loc=KR`)에서 Cloudflare 엣지가 **미국 SEA·LAX**로 연결됨. 원본을 거치지 않는 `/cdn-cgi/trace`도 0.38~1.9초 → 지연 대부분은 **사용자↔Cloudflare 엣지** 구간(국내 통신사↔Cloudflare 무료/Pro 요금제 연결 경로). 클러스터 설정으로는 개선 불가.
+  - LAX 엣지(104.21.80.218)가 SEA(172.67.187.71)보다 느림: 중앙값 2.0초 vs 0.83초, TLS 핸드셰이크 최대 1.8초.
+  - 덧붙여 확인: 게이트웨이 인증서(공용 `letsencrypt-issuer-public-tls`)에 `note.studiobasa.com`이 없음(studiobasa.com, test1, test2만) → Cloudflare SSL이 Full(검증 안 함)일 때만 동작하고, Cloudflare→원본 구간 인증서는 검증되지 않음.
+  - 개선 선택지: (가) Cloudflare 프록시 끄기(DNS only, 원본 직접 — 국내 수십 ms, 대신 원본 IP 노출·DDoS 보호 없음, 인증서에 note 추가 필요) (나) 프록시 유지 + 인증서에 note 추가 후 SSL Full(strict) (다) 국내 POP가 있는 CDN/요금제. 앱은 오프라인 우선이라 지연은 주로 로그인·동기화에 영향.
 - 데이터: DB PITR, object versioning, 사용자 단위 export/삭제 정책 확정.
   - **구현(2026-11-09)**: 매일 `pg_dump` 백업 + 매번 복원 검증 CronJob, 14일 보관, 백업 PVC 유지 정책. 절차는 `infra/k8s/README.md`. PITR(WAL 보관)과 NAS 밖 사본은 후속.
 - Cloud 저장소의 장애 시 메모 편집 지속, 동기화 실패 알림 및 지수 백오프.
