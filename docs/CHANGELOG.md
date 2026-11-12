@@ -155,4 +155,8 @@
 - 테스트: 서버 지표 2개(템플릿 라벨·ID 비노출·API 포트 미노출 / DB 지표, 실 Postgres), `make helm-lint`, 렌더링한 PromQL 23개를 클러스터 Prometheus 쿼리 API로 문법 확인(조회만).
 - 발견: **공용 Alertmanager가 199일째 생성 실패**(`volumeClaimTemplates` storage 값 누락) → 지금은 알림이 어디로도 전달되지 않음. 공용 리소스라 이 변경에서는 손대지 않음.
 - 위험: 지표 수집마다 DB에 count 쿼리 7개(30초 간격, 데이터가 커지면 비용 증가 → 그때 캐시). 서버 재시작 시 카운터 초기화(rate로 처리). replica 1대 기준.
+- 배포(2026-11-12, PR #6 `2e26f8c`): rev 10 `sha-2e26f8c`, `monitoring.enabled=true`, `prometheusRelease=prometheus-stack`.
+  - 첫 시도 rev 9는 `--reuse-values`로 새 기본값(`monitoring.alerts.*`)이 빠져 webhook이 규칙 거부 → 리소스 생성 전 실패, API는 rev 8 그대로. `--reset-then-reuse-values`로 재실행해 성공.
+  - 확인: 수집 대상 `serviceMonitor/memonest/memonest-api/0` up, `memonest_db_up` 1, 계정 상한 999, 알림 7개 모두 `inactive`/정상 평가, Grafana 사이드카가 `memonest.json` 적재, 외부 `/metrics`는 웹 앱 HTML만(지표 0줄).
+  - 배포 중 외부 `/healthz` 60회: 200 57회, 시간 초과 3회(기존 외부 경로 지연과 같은 양상).
 - 후속: Alertmanager 복구·알림 받을 곳(메일/메신저) 결정, Postgres 자체 지표(postgres-exporter), 외부 경로 지연 측정(Cloudflare→게이트웨이).
