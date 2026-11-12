@@ -21,6 +21,8 @@
     (외부 HTTPRoute는 API 포트만 연결). 요청 수·응답 시간(경로 템플릿만 라벨, 메모 ID·토큰 없음), DB 연결, 계정/상한·활성 장비·메모 수·사용 용량·편집 임대 수.
     ServiceMonitor + PrometheusRule(API 다운, DB 장애, 5xx 비율, p95 응답 시간, 계정 상한 근접, 백업 26시간 지연, Pod 재시작) +
     Grafana 대시보드 ConfigMap(`grafana_dashboard=1`). Prometheus가 고르는 `release` 라벨은 클러스터마다 다르므로 `--set monitoring.prometheusRelease=...`.
+    **차트에 새 기본값이 추가된 업그레이드는 `--reuse-values` 대신 `--reset-then-reuse-values`**(Helm 3.14+) — `--reuse-values`는 새 차트의
+    기본값을 무시해 `monitoring.alerts.*`가 비고, 운영자 webhook이 PrometheusRule을 거부함(2026-11-12 rev 9 실패, 클러스터 변경 없음).
     **알림 전달은 클러스터 Alertmanager에 달려 있음** — 2026-11-12 확인 시 공용 Alertmanager가 저장소 설정 누락으로 실행되지 않는 상태(별도 조치 필요).
 - 데이터: DB PITR, object versioning, 사용자 단위 export/삭제 정책 확정.
   - **구현(2026-11-09)**: 매일 `pg_dump` 백업 + 매번 복원 검증 CronJob, 14일 보관, 백업 PVC 유지 정책. 절차는 `infra/k8s/README.md`. PITR(WAL 보관)과 NAS 밖 사본은 후속.
