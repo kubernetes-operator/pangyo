@@ -12,6 +12,7 @@ pub mod config;
 pub mod downloads;
 pub mod error;
 pub mod integrations;
+pub mod metrics;
 pub mod notes;
 pub mod search;
 pub mod security;
@@ -251,6 +252,8 @@ pub fn router(state: AppState) -> Router {
             REQUEST_TIMEOUT,
         ))
         .route("/dl/{token}", get(downloads::download))
+        // 지표: 일치한 경로 템플릿을 응답에 기록 (메모 ID·토큰 대신 `{id}`·`{token}`)
+        .route_layer(axum::middleware::from_fn(metrics::label_route))
         .with_state(state);
     let router = match web_root {
         // 웹 앱 제공: 없는 경로는 index.html (단일 페이지 앱)
@@ -259,7 +262,10 @@ pub fn router(state: AppState) -> Router {
         ),
         None => router.fallback(not_found),
     };
-    router.layer(middleware)
+    // 가장 바깥: 모든 요청의 횟수·응답 시간 (지표 서버는 별도 포트, metrics::router)
+    router
+        .layer(middleware)
+        .layer(axum::middleware::from_fn(metrics::record))
 }
 
 async fn healthz() -> Json<serde_json::Value> {

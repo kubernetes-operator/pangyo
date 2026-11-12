@@ -287,8 +287,11 @@ async fn server_starts_before_database_and_connects_later() {
         database_url: Some("postgres://postgres@127.0.0.1:9/none".into()),
         ..Config::default()
     };
-    let router = memonest_server::router(AppState::connect_in_background(config));
-    let app = TestApp { router };
+    let state = AppState::connect_in_background(config);
+    let app = TestApp {
+        router: memonest_server::router(state.clone()),
+        state,
+    };
     assert_eq!(
         app.call(Method::GET, "/healthz", None, Auth::None)
             .await

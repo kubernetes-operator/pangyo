@@ -145,3 +145,14 @@
 - 테스트: `make check` 통과 — Web 단위 80개(엔진 바깥 삭제 4개 추가) + E2E 16개(실서버 포함), core 작업공간 14개(신규 5), native 2개(서버 주소·허용 경로), 서버 DB 테스트. **`make desktop-sync-check` 7/7 통과**(Linux Xvfb, 실제 앱 화면 조작, 격리 키링): 장비 연결, 파일→서버, 서버→파일, 바깥 편집, 바깥 이름 변경(같은 ID), 바깥 삭제 보관→화면에서 서버 삭제, 토큰이 앱 데이터에 없음, 장비 폐기 시 중지 안내.
 - 위험: Windows·macOS는 CI 빌드만, **실제 키체인/자격 증명 관리자 동작 미확인**. Android는 토큰을 앱 전용 폴더에 평문 보관(루팅 기기에서 노출 가능, Keystore 연동은 후속), 실기기 미확인. Linux에서 Secret Service(키링)가 없으면 연결할 수 없음(안내 문구 표시, 등록 코드는 쓰지 않음). 바깥 이름 변경과 동시에 내용도 바꾸면 '삭제 + 새 메모'로 처리됨. 동기화 주기마다 전체 폴더를 다시 읽음(메모 수천 개면 느릴 수 있음, 파일 감시는 후속).
 - 후속: Windows/macOS/Android 실기 확인, Android Keystore, 파일 변경 감시(notify), iOS, BSD TUI 동기화(08단계).
+
+## Unreleased — 로드맵 10: 운영 지표·알림 (`feature/roadmap10-monitoring`)
+- 변경 파일: `crates/server/src/{metrics.rs(신규),lib.rs,main.rs}`, `crates/server/tests/{metrics.rs(신규),common/mod.rs}`, Helm `values.yaml`(`monitoring.*`)·`templates/{monitoring.yaml(신규),deployment.yaml,service.yaml}`·`files/dashboard.json`(신규)·`Chart.yaml` 0.3.0, docs/09.
+- 서버: `METRICS_BIND_ADDRESS`가 있을 때만 별도 포트에 `/metrics`(Prometheus 텍스트). API 포트·외부 경로에는 없음. 의존성 추가 없음(직접 구현).
+  - HTTP 요청 수·응답 시간 히스토그램: 라벨은 경로 **템플릿**(`/api/v1/notes/{id}`, `/dl/{token}`)만 → 메모 ID·다운로드 토큰이 지표에 남지 않음.
+  - DB: `memonest_db_up`, 계정/상한, 활성 장비, 메모(삭제 제외/묘비), 사용 용량/한도 합, 활성 편집 임대. 수집마다 3초 제한 조회. 이메일·제목·본문 등 개인 정보 없음.
+- Helm(`monitoring.enabled`, 기본 꺼짐): 지표 포트, Service `component: api` 라벨, ServiceMonitor, PrometheusRule 7개(API 다운·DB 장애·5xx 비율·p95·계정 상한·백업 지연·Pod 재시작, 기준값은 values), Grafana 대시보드 12패널.
+- 테스트: 서버 지표 2개(템플릿 라벨·ID 비노출·API 포트 미노출 / DB 지표, 실 Postgres), `make helm-lint`, 렌더링한 PromQL 23개를 클러스터 Prometheus 쿼리 API로 문법 확인(조회만).
+- 발견: **공용 Alertmanager가 199일째 생성 실패**(`volumeClaimTemplates` storage 값 누락) → 지금은 알림이 어디로도 전달되지 않음. 공용 리소스라 이 변경에서는 손대지 않음.
+- 위험: 지표 수집마다 DB에 count 쿼리 7개(30초 간격, 데이터가 커지면 비용 증가 → 그때 캐시). 서버 재시작 시 카운터 초기화(rate로 처리). replica 1대 기준.
+- 후속: Alertmanager 복구·알림 받을 곳(메일/메신저) 결정, Postgres 자체 지표(postgres-exporter), 외부 경로 지연 측정(Cloudflare→게이트웨이).
