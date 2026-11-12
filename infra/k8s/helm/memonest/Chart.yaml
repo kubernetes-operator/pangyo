@@ -1,7 +1,7 @@
 # === Helm Chart: MemoNest API(웹 앱 포함) + 내장 Postgres(선택). S3/검색 인덱서는 포함하지 않습니다. ===
 apiVersion: v2
 name: memonest
-version: 0.2.0
+version: 0.3.0
 appVersion: "0.1.0"
 description: "MemoNest web app + account API (Rust/axum) with optional embedded PostgreSQL"
 type: application

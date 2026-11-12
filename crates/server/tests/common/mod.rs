@@ -13,6 +13,8 @@ use tower::ServiceExt;
 
 pub struct TestApp {
     pub router: Router,
+    /// 지표 서버(metrics::router) 확인용
+    pub state: AppState,
 }
 
 pub struct Reply {
@@ -47,7 +49,8 @@ pub async fn app_with(adjust: impl FnOnce(&mut Config)) -> Option<TestApp> {
     adjust(&mut config);
     let state = AppState::connect(config).await.expect("마이그레이션");
     Some(TestApp {
-        router: memonest_server::router(state),
+        router: memonest_server::router(state.clone()),
+        state,
     })
 }
 

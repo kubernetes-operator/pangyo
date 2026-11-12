@@ -1,7 +1,9 @@
 //! MemoNest API 서버 실행 파일.
 use std::env;
 
-use memonest_server::{router, AppState, Config, BIND_ENV, DEFAULT_BIND_ADDRESS, LOG_ENV, VERSION};
+use memonest_server::{
+    metrics, router, AppState, Config, BIND_ENV, DEFAULT_BIND_ADDRESS, LOG_ENV, VERSION,
+};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -19,12 +21,23 @@ async fn main() -> std::io::Result<()> {
     if !has_db {
         tracing::warn!("DATABASE_URL 없음: 계정 기능 비활성 (health/info만)");
     }
+    // 운영 지표: 별도 내부 포트 (외부 HTTPRoute는 API 포트만 연결). 설정이 없으면 열지 않음
+    if let Ok(metrics_addr) = env::var(metrics::METRICS_BIND_ENV) {
+        let listener = tokio::net::TcpListener::bind(&metrics_addr).await?;
+        tracing::info!(addr = %listener.local_addr()?, "metrics listening");
+        let app = metrics::router(state.clone());
+        tokio::spawn(async move {
+            if let Err(e) = axum::serve(listener, app).await {
+                tracing::error!(error = %e, "metrics server stopped");
+            }
+        });
+    }
     let addr = env::var(BIND_ENV).unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_owned());
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(
         version = VERSION,
         addr = %listener.local_addr()?,
-        "MemoNest API listening (accounts: DB, sync: not implemented)"
+        "MemoNest API listening"
     );
     axum::serve(listener, router(state))
         .with_graceful_shutdown(shutdown_signal())

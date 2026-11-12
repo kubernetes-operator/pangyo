@@ -69,3 +69,22 @@ httpRoute:
   gatewayName: ""
   gatewayNamespace: ""
   sectionNames: [http, https]
+
+# 운영 지표·알림 (로드맵 10). kube-prometheus-stack(Prometheus Operator)이 있는 클러스터용
+# - API가 별도 내부 포트(metrics)에서 /metrics 제공 → ServiceMonitor로 수집 (외부 HTTPRoute에는 연결 안 됨)
+# - PrometheusRule: API 다운, DB 장애, 5xx 비율, 느린 응답, 계정 상한 근접, 백업 지연, Pod 재시작
+# - Grafana 대시보드 ConfigMap (Grafana 사이드카가 grafana_dashboard=1 라벨을 읽는 경우)
+monitoring:
+  enabled: false
+  port: 9464
+  # Prometheus가 ServiceMonitor/PrometheusRule을 고르는 라벨 release 값 (클러스터마다 다름 → --set 으로 전달)
+  prometheusRelease: ""
+  interval: 30s
+  dashboard: true
+  alerts:
+    errorRatio: 0.05 # 5분 평균 5xx 비율(501 제외)이 이보다 크면 경고
+    latencyP95Seconds: 1 # API p95 응답 시간(서버 안쪽, /dl 제외)
+    accountsRatio: 0.9 # 가입 계정 / 상한
+    backupMaxAgeHours: 26 # 마지막 백업 성공 후 이 시간이 지나면 경고 (매일 실행 + 여유)
+    restartsPer30m: 3 # 30분 동안 컨테이너 재시작 횟수
+

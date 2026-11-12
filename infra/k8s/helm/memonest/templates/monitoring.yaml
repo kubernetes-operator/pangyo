@@ -1,0 +1,97 @@
+{{- if .Values.monitoring.enabled }}
+# === 운영 지표·알림 (로드맵 10). Prometheus Operator CRD 필요 (kube-prometheus-stack) ===
+{{- $sel := printf "namespace=\"%s\",service=\"%s\"" .Release.Namespace .Release.Name }}
+{{- $ns := printf "namespace=\"%s\"" .Release.Namespace }}
+{{- $a := .Values.monitoring.alerts }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "memonest.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRelease }}
+    release: {{ . | quote }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: memonest, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
+  endpoints:
+    - {port: metrics, path: /metrics, interval: {{ .Values.monitoring.interval }}, scrapeTimeout: 10s}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "memonest.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRelease }}
+    release: {{ . | quote }}
+    {{- end }}
+spec:
+  groups:
+    - name: memonest.rules
+      rules:
+        - alert: MemoNestApiDown
+          expr: absent(up{ {{- $sel -}} } == 1)
+          for: 5m
+          labels: {severity: critical, app: memonest}
+          annotations:
+            summary: MemoNest API 지표를 5분 넘게 수집하지 못함 (API 다운 또는 수집 설정 문제)
+        - alert: MemoNestDatabaseDown
+          expr: max(memonest_db_configured{ {{- $sel -}} }) == 1 and max(memonest_db_up{ {{- $sel -}} }) == 0
+          for: 2m
+          labels: {severity: critical, app: memonest}
+          annotations:
+            summary: MemoNest API가 DB를 조회하지 못함 (로그인·동기화 불가, 기기의 메모는 로컬에 저장됨)
+        - alert: MemoNestHighErrorRate
+          expr: |
+            sum(rate(memonest_http_requests_total{ {{- $sel -}} ,status=~"5..",status!="501"}[5m]))
+              / clamp_min(sum(rate(memonest_http_requests_total{ {{- $sel -}} }[5m])), 0.001) > {{ $a.errorRatio }}
+          for: 10m
+          labels: {severity: warning, app: memonest}
+          annotations:
+            summary: 'MemoNest 5xx 응답 비율이 {{ "{{" }} $value | humanizePercentage {{ "}}" }} (기준 {{ $a.errorRatio }})'
+        - alert: MemoNestSlowApi
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(memonest_http_request_duration_seconds_bucket{ {{- $sel -}} ,route=~"/api/.*"}[5m])))
+              > {{ $a.latencyP95Seconds }}
+          for: 15m
+          labels: {severity: warning, app: memonest}
+          annotations:
+            summary: 'MemoNest API p95 응답 시간 {{ "{{" }} $value | humanizeDuration {{ "}}" }} (서버 안쪽 기준)'
+        - alert: MemoNestAccountsNearLimit
+          expr: max(memonest_accounts{ {{- $sel -}} }) / max(memonest_accounts_max{ {{- $sel -}} }) > {{ $a.accountsRatio }}
+          for: 30m
+          labels: {severity: warning, app: memonest}
+          annotations:
+            summary: 'MemoNest 가입 계정이 상한의 {{ "{{" }} $value | humanizePercentage {{ "}}" }}'
+        {{- if and .Values.backup.enabled .Values.postgres.enabled }}
+        - alert: MemoNestBackupStale
+          expr: |
+            time() - max(kube_cronjob_status_last_successful_time{ {{- $ns -}} ,cronjob="{{ .Release.Name }}-backup"})
+              > {{ mul $a.backupMaxAgeHours 3600 }}
+          for: 30m
+          labels: {severity: warning, app: memonest}
+          annotations:
+            summary: 'MemoNest DB 백업(복원 검증 포함) 마지막 성공 후 {{ "{{" }} $value | humanizeDuration {{ "}}" }} 경과'
+        {{- end }}
+        - alert: MemoNestPodRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{ {{- $ns -}} ,pod=~"{{ .Release.Name }}-.*"}[30m]) > {{ $a.restartsPer30m }}
+          labels: {severity: warning, app: memonest}
+          annotations:
+            summary: 'MemoNest {{ "{{" }} $labels.pod {{ "}}" }} 컨테이너가 30분 동안 {{ "{{" }} $value | printf "%.0f" {{ "}}" }}회 재시작'
+{{- if .Values.monitoring.dashboard }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  labels:
+    {{- include "memonest.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  memonest.json: |-
+{{ .Files.Get "files/dashboard.json" | replace "__NAMESPACE__" .Release.Namespace | replace "__SERVICE__" .Release.Name | indent 4 }}
+{{- end }}
+{{- end }}

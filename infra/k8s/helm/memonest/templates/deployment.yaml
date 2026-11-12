@@ -29,6 +29,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - {name: API_BIND_ADDRESS, value: "0.0.0.0:8080"}
+            {{- if .Values.monitoring.enabled }}
+            - {name: METRICS_BIND_ADDRESS, value: "0.0.0.0:{{ .Values.monitoring.port }}"}
+            {{- end }}
             - {name: RUST_LOG, value: {{ .Values.app.logLevel | quote }}}
             - {name: REGISTRATION, value: {{ .Values.app.registration | quote }}}
             - {name: MAX_ACCOUNTS, value: {{ .Values.app.maxAccounts | quote }}}
@@ -45,6 +48,9 @@ spec:
               value: "postgres://{{ .Values.database.user }}:$(DB_PASSWORD)@{{ include "memonest.dbHost" . }}:5432/{{ .Values.database.name }}"
           ports:
             - {name: http, containerPort: 8080, protocol: TCP}
+            {{- if .Values.monitoring.enabled }}
+            - {name: metrics, containerPort: {{ .Values.monitoring.port }}, protocol: TCP}
+            {{- end }}
           lifecycle:
             # 종료 전 잠시 대기: 게이트웨이가 연결 대상을 갱신할 시간 (2026-11-09 배포에서 502 1회 관찰)
             preStop: {sleep: {seconds: 8}}
