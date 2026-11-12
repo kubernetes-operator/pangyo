@@ -40,7 +40,16 @@ export interface SyncApi {
   put(id: string, body: Record<string, unknown>): Promise<ServerNote>;
   acquireLease(id: string, clientId: string, label: string): Promise<LeaseGrant>;
   releaseLease(id: string, clientId: string, keepalive?: boolean): Promise<void>;
+  /** 서버에서 삭제 (묘비). 임대·fencing token 필요 */
+  remove(id: string, baseVersion: number, clientId: string, fencingToken: number | null): Promise<ServerNote>;
 }
+
+/** 앱 밖에서 지운 메모를 서버에서도 지운 결과 */
+export type RemoteDeleteResult =
+  | 'deleted' // 서버에서도 삭제됨
+  | 'gone' // 이미 서버에 없음
+  | 'changed' // 지운 뒤 다른 기기에서 바뀜 → 삭제하지 않음 (다시 받기 권장)
+  | 'busy'; // 다른 기기가 편집 중 → 나중에 다시
 
 /** 화면 상태 + 저장소 연결 (app.ts가 구현) */
 export interface SyncStore {
@@ -131,6 +140,11 @@ export class SyncEngine {
 
   status(): SyncStatus {
     return this.lastStatus;
+  }
+
+  /** 진행 중인 동기화가 끝날 때까지 기다림 (디스크 다시 읽기와 겹치지 않게) */
+  idle(): Promise<void> {
+    return this.running ?? Promise.resolve();
   }
 
   /** 처음 계정에 연결할 때: 아직 올리지 않은 로컬 메모를 모두 올릴 대상으로 표시 */
@@ -439,6 +453,45 @@ export class SyncEngine {
       redo: [],
       sync: { version: 0, dirty: true },
     };
+  }
+
+  /**
+   * 앱 밖에서 지운 메모를 서버에서도 삭제 (데스크톱, ADR-0004). baseVersion은 지우기 직전의 서버 버전.
+   * 그 사이 다른 기기에서 바뀌었으면 지우지 않고 'changed'.
+   */
+  async deleteRemote(id: string, baseVersion: number): Promise<RemoteDeleteResult> {
+    const lease = await this.ensureLease(id, false);
+    if (lease.kind === 'offline') throw { offline: true, message: 'offline' } satisfies SyncError;
+    if (lease.kind === 'denied') return 'busy';
+    if (lease.kind === 'not-needed') return 'gone';
+    try {
+      await this.api.remove(id, baseVersion, this.opts.clientId, this.leases.get(id)?.token ?? null);
+      return 'deleted';
+    } catch (e) {
+      const err = asSyncError(e);
+      if (err.offline) throw e;
+      if (err.status === 404) return 'gone';
+      if (err.code === 'version_conflict') return err.details?.deleted ? 'gone' : 'changed';
+      throw e;
+    } finally {
+      await this.release(id);
+    }
+  }
+
+  /** 서버의 현재 내용으로 다시 받기 (바깥에서 지운 메모 되살리기). 서버에도 없으면 false */
+  async restoreRemote(id: string): Promise<boolean> {
+    let server: ServerNote;
+    try {
+      server = await this.api.get(id);
+    } catch (e) {
+      const err = asSyncError(e);
+      if (err.status === 404) return false;
+      throw e;
+    }
+    if (server.deleted) return false;
+    if (this.store.list().some((n) => n.id === id)) return true;
+    await this.apply(server);
+    return true;
   }
 
   /** 로그아웃·계정 전환: 임대를 모두 반납하고 멈춤 */

@@ -78,6 +78,18 @@ class FakeServer {
         this.guard();
         if (this.leases.get(id)?.holder === clientId) this.leases.delete(id);
       },
+      remove: async (id, baseVersion, clientId, fencingToken) => {
+        this.guard();
+        const current = this.notes.get(id);
+        if (!current) this.fail(404, 'note_not_found', 'not found');
+        if (current.deleted) this.fail(409, 'version_conflict', '삭제됨', { currentVersion: current.version, deleted: true });
+        this.leaseOk(id, clientId, fencingToken);
+        if (baseVersion !== current.version)
+          this.fail(409, 'version_conflict', '충돌', { currentVersion: current.version, deleted: false });
+        this.deleteOnServer(id);
+        this.leases.delete(id);
+        return structuredClone(this.notes.get(id)!);
+      },
     };
   }
 
@@ -271,5 +283,63 @@ describe('동기화 엔진 (ADR-0003 A안)', () => {
     expect(store.notes[0]!.sync).toMatchObject({ dirty: true, error: '같은 이름' });
     edit(engine, store.notes[0]!, 'changed');
     expect(store.notes[0]!.sync?.error).toBeUndefined();
+  });
+
+  describe('앱 밖에서 지운 메모 (데스크톱, ADR-0004)', () => {
+    async function setup() {
+      const server = new FakeServer();
+      const desk = await device(server, 'desk', '데스크톱');
+      desk.store.notes.push(note('바깥삭제', 'x'));
+      await desk.engine.adoptLocalNotes();
+      await desk.engine.syncOnce();
+      const n = desk.store.notes[0]!;
+      const version = n.sync!.version;
+      desk.store.notes = []; // 파일이 바깥에서 지워짐 (core가 external_deletions로 보관)
+      return { server, desk, id: n.id, version };
+    }
+
+    it('서버에서도 삭제 → 다른 기기에서 사라짐', async () => {
+      const { server, desk, id, version } = await setup();
+      const phone = await device(server, 'phone', '휴대폰');
+      await phone.engine.syncOnce();
+      expect(phone.store.notes).toHaveLength(1);
+      expect(await desk.engine.deleteRemote(id, version)).toBe('deleted');
+      expect(server.notes.get(id)!.deleted).toBe(true);
+      expect(server.leases.has(id)).toBe(false);
+      await phone.engine.syncOnce();
+      expect(phone.store.notes).toHaveLength(0);
+      await desk.engine.syncOnce();
+      expect(desk.store.notes).toHaveLength(0); // 묘비는 되살리지 않음
+    });
+
+    it('지운 뒤 다른 기기가 고쳤으면 삭제하지 않음(changed) → 다시 받기', async () => {
+      const { server, desk, id, version } = await setup();
+      const phone = await device(server, 'phone', '휴대폰');
+      await phone.engine.syncOnce();
+      edit(phone.engine, phone.store.notes[0]!, '휴대폰에서 고침');
+      await phone.engine.syncOnce();
+      expect(await desk.engine.deleteRemote(id, version)).toBe('changed');
+      expect(server.notes.get(id)!.deleted).toBe(false);
+      expect(await desk.engine.restoreRemote(id)).toBe(true);
+      expect(desk.store.notes.map((n) => [n.id, n.content, n.sync?.dirty])).toEqual([[id, '휴대폰에서 고침', false]]);
+    });
+
+    it('다른 기기가 편집 중이면 busy, 이미 서버에서 지워졌으면 gone', async () => {
+      const { server, desk, id, version } = await setup();
+      const phone = await device(server, 'phone', '휴대폰');
+      await phone.engine.syncOnce();
+      await phone.engine.beginEdit(phone.store.notes[0]!);
+      expect(await desk.engine.deleteRemote(id, version)).toBe('busy');
+      await phone.engine.endEdit(id);
+      server.deleteOnServer(id);
+      expect(await desk.engine.deleteRemote(id, version)).toBe('gone');
+      expect(await desk.engine.restoreRemote(id)).toBe(false);
+    });
+
+    it('오프라인이면 오류(나중에 다시)', async () => {
+      const { server, desk, id, version } = await setup();
+      server.offline = true;
+      await expect(desk.engine.deleteRemote(id, version)).rejects.toMatchObject({ offline: true });
+    });
   });
 });

@@ -35,7 +35,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Offline-first minimal Markdown notes",
-    "longDescription": "MemoNest keeps notes as plain .md/.txt files on your device. Sync and accounts are optional and not yet available.",
+    "longDescription": "MemoNest keeps notes as plain .md/.txt files on your device. Optional sync: link the app to your MemoNest server with a one-time code.",
     "publisher": "MemoNest",
     "copyright": "",
     "license": "UNLICENSED",

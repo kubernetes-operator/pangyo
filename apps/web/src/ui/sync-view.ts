@@ -25,6 +25,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     draft: '오프라인 초안 — 연결되면 자동으로 올립니다',
     failed: '동기화 실패: {msg} (내용은 이 기기에 저장됨)',
     otherAccount: '이 기기의 메모는 다른 계정과 동기화되어 있어 동기화하지 않습니다',
+    externalDeleted: '밖에서 삭제 {n} · 확인 필요',
+    revoked: '장비 연결 해제됨 · 다시 연결 필요',
   },
   en: {
     off: 'Sync off',
@@ -47,14 +49,28 @@ const TEXT: Record<Locale, Record<string, string>> = {
     draft: 'Offline draft — uploads when back online',
     failed: 'Sync failed: {msg} (saved on this device)',
     otherAccount: 'Notes on this device belong to another account; sync is off',
+    externalDeleted: '{n} deleted outside · review',
+    revoked: 'Device unlinked · link again',
   },
 };
 
 const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ''));
 
-export function syncStatusText(status: SyncStatus | null, locale: Locale, blocked = false): string {
+export function syncStatusText(
+  status: SyncStatus | null,
+  locale: Locale,
+  blocked = false,
+  externalDeleted = 0,
+  revoked = false,
+): string {
   const t = TEXT[locale];
+  if (revoked) return t.revoked;
+  const base = baseStatusText(status, t, blocked);
+  return externalDeleted ? `${base} · ${fill(t.externalDeleted, { n: externalDeleted })}` : base;
+}
+
+function baseStatusText(status: SyncStatus | null, t: Record<string, string>, blocked: boolean): string {
   if (blocked) return t.otherAccount;
   if (!status) return t.off;
   if (status.conflicts) return fill(t.conflicts, { n: status.conflicts });

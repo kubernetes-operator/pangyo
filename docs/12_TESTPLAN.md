@@ -44,6 +44,8 @@
 | T-21 | E2E(실서버, 브라우저 2개) | 다른 기기 전달 → 편집 중 읽기 전용(최신 내용 표시) → 반납 후 편집 → 오프라인 초안 충돌 → 둘 다 보관 → 사본 전달 (`e2e/sync.spec.ts`, 3회 반복 통과) |
 | T-22 | Rust 통합(Postgres) | 검색: 한국어 제목·본문, 제목 우선, 미리보기, `%` 글자 그대로, 계정 격리 / 연관 메모 / 자동화 토큰: 범위(읽기·쓰기·계정 불가), 토큰으로 토큰 발급 불가, n8n 임대 표시, 원문 비노출, 해제 즉시 401, 입력 검증 (`tests/search_tokens.rs`) |
 | T-23 | E2E(실서버) | 계정 화면 토큰 발급→Bearer로 API→해제 후 401, 연관 메모 패널 표시·이동 |
+| T-24 | Rust 통합 + 단위 | 앱 밖 변경(ADR-0004): 바깥 편집→올릴 변경, 바깥 이름 변경→ID 유지(애매하면 추측 안 함), 바깥 삭제→보관·다시 받기·잊기, 세션만 저장 시 본문 보존 (`workspace.rs`) / 서버 주소·허용 경로 규칙 (`remote.rs`) / 엔진 서버 삭제·다시 받기(deleted·changed·busy·gone·오프라인) (`engine.test.ts`) |
+| T-25 | 실기(Linux Xvfb + 테스트 Postgres) | `make desktop-sync-check`: 실제 데스크톱 앱 화면에서 장비 연결 → 파일↔서버 양방향 → 바깥 편집·이름 변경 반영 → 바깥 삭제 확인 후 서버 삭제 → 토큰이 앱 데이터에 없음 → 웹에서 장비 폐기 시 동기화 중지 안내. 격리된 D-Bus + 임시 키링, 시험 전용 `e2e` feature(배포 빌드 제외). Windows·macOS·Android 실기는 미자동화 |
 
 ### 알려진 문제
 - **개발 서버 Xvfb에서 데스크톱 앱 시작이 간헐적으로 멈춤 (2026-11-07)**: AMD Ryzen 5 6600H + Mesa 26.0.8(libgallium) + Xvfb 조합에서 GTK가 OpenGL 화면을 만들 때 Mesa 초기화(`driCreateNewScreen3` → `pthread_once` → `pthread_setaffinity`)가 멈춤(gdb 확인, 약 20~50%). 앱 코드 이전 단계이며 `LP_NUM_THREADS=0`, `GDK_GL=disable`, `GALLIUM_DRIVER=softpipe`, Xvfb GLX 끔, DMABUF/컴포지팅 끔 모두 효과 없음. GitHub 러너에서는 재현 안 됨. 대응: 실행 확인 스크립트가 Linux에서 20초 안에 웹뷰가 시작되지 않으면 최대 2회 재실행하고 결과에 표시. **실제 데스크톱(GPU 있는 세션)에서 발생하는지 미확인.**

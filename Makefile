@@ -1,6 +1,6 @@
 # === MemoNest 개발 명령 모음: 모든 사람/CI/에이전트가 같은 진입점을 사용 ===
 # 사용법: make help
-.PHONY: help setup db-test-up db-test-down check check-fast fmt test e2e dev-web build-web dev-api image bsd desktop desktop-smoke helm-lint
+.PHONY: help setup db-test-up db-test-down check check-fast fmt test e2e dev-web build-web dev-api image bsd desktop desktop-smoke desktop-sync-check helm-lint
 
 IMAGE ?= memonest-api:dev ## make image IMAGE=<레지스트리>/memonest/api:<태그>
 
@@ -51,6 +51,12 @@ desktop: ## 데스크톱 앱 실행 (웹 빌드 포함, 메모 폴더: $$MEMONES
 
 desktop-smoke: ## 데스크톱 앱 실행 확인 (Xvfb, 임시 폴더 사용)
 	./scripts/desktop-smoke.sh
+
+desktop-sync-check: ## 데스크톱 앱 ↔ 로컬 테스트 서버 동기화 실기 확인 (Linux, make db-test-up 필요)
+	npm run -s -w apps/web build >/dev/null
+	cargo build -q -p memonest-server
+	cargo build -q -p memonest-native --features custom-protocol,e2e
+	python3 scripts/desktop_sync_check.py
 
 bsd: ## BSD 콘솔 메모 앱 실행 (로컬 테스트)
 	cargo run -p memonest-bsd

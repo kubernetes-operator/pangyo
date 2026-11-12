@@ -18,6 +18,9 @@ crate-type = ["lib", "cdylib", "staticlib"]
 # 앱에 포함된 웹 빌드(apps/web/dist)를 사용. 없으면 디버그 빌드는 개발 서버(devUrl)를 엽니다.
 # tauri CLI의 build는 자동으로 켭니다. cargo로 직접 빌드할 때: --features custom-protocol
 custom-protocol = ["tauri/custom-protocol"]
+# 시험 전용: MEMONEST_E2E_SCRIPT 파일의 JS를 페이지 로드 후 웹뷰에서 실행 (scripts/desktop_sync_check.py).
+# 배포 빌드(tauri build, CI 패키징)에서는 켜지 않습니다.
+e2e = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -25,7 +28,15 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 memonest-core = { path = "../../../crates/core", features = ["workspace"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 서버 연결 (ADR-0004): 작은 동기 HTTP 클라이언트, rustls + ring (Android 교차 빌드에 C 도구 추가 불필요)
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+# 장비 토큰 보관: 데스크톱 OS 보안 저장소 (Windows 자격 증명 관리자, macOS 키체인, Linux Secret Service)
+# 모바일은 앱 전용 폴더 (remote.rs). Android Keystore 연동은 후속.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 # 진단용(리눅스): MEMONEST_WEBVIEW_CONSOLE=1 이면 웹뷰 콘솔 메시지를 표준 출력으로 보냅니다.
 [target.'cfg(target_os = "linux")'.dependencies]

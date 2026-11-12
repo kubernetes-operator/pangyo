@@ -5,6 +5,9 @@
 //!   사용자 텍스트 파일에는 아무것도 덧붙이지 않습니다 (docs/02_ARCHITECTURE.md).
 //! - 바깥(BSD 앱, 다른 편집기)에서 만든 파일은 목록 조회 때 새 UUID로 등록하고,
 //!   바깥에서 내용이 바뀌면 해시로 감지해 버전과 수정 시각을 올립니다. 사라진 파일은 인덱스에서 뺍니다.
+//! - 동기화 중인 메모(ADR-0004): 바깥 편집은 '올릴 변경'(sync.dirty)으로 표시하고,
+//!   같은 내용의 파일이 사라지면서 새로 생기면 바깥 이름 변경으로 보고 ID를 유지합니다.
+//!   서버에 올라간 메모 파일이 사라지면 [`ExternalDeletion`]으로 보관해 사용자가 고르게 합니다.
 //! - 제목/폴더/형식이 바뀌면 파일을 옮기며, 다른 메모 파일을 **덮어쓰지 않습니다** ([`CoreError::Conflict`]).
 //!
 //! 웹 화면의 `Note` 타입(apps/web/src/domain/types.ts)과 같은 JSON 모양(camelCase)을 씁니다.
@@ -27,11 +30,12 @@ use crate::{
 };
 
 // === 0. 인덱스 마이그레이션: db/sqlite/*.sql 을 순서대로 적용 (PRAGMA user_version = 적용 개수) ===
-const MIGRATIONS: [&str; 4] = [
+const MIGRATIONS: [&str; 5] = [
     include_str!("../../../db/sqlite/001_initial.sql"),
     include_str!("../../../db/sqlite/002_session_open_time.sql"),
     include_str!("../../../db/sqlite/003_workspace.sql"),
     include_str!("../../../db/sqlite/004_sync_state.sql"),
+    include_str!("../../../db/sqlite/005_external_deletions.sql"),
 ];
 
 /// Undo/Redo 한 칸 (웹과 같은 전체 스냅샷)
@@ -79,6 +83,19 @@ pub struct NoteRecord {
     pub sync: Option<serde_json::Value>,
 }
 
+/// 앱 밖에서 지워진, 서버에 올라간 적 있는 메모 (사용자가 서버 삭제/다시 받기를 고를 때까지 보관)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalDeletion {
+    pub id: String,
+    pub title: String,
+    pub folder: String,
+    pub format: NoteFormat,
+    /// 지워지기 직전의 동기화 상태 (웹 `Note.sync`와 같은 JSON, `version` = 서버 삭제 시 baseVersion)
+    pub sync: serde_json::Value,
+    pub detected_at: String,
+}
+
 /// 인덱스의 notes 행
 struct IndexRow {
     id: String,
@@ -116,48 +133,103 @@ impl Workspace {
         let files = self.store.list()?;
         let tx = self.db.transaction()?;
         let mut indexed = load_index(&tx)?;
-        let mut out = Vec::with_capacity(files.len());
+        // 1) 경로가 그대로인 파일: 바깥 편집 감지
+        let mut found: Vec<(NoteLocation, String, IndexRow)> = Vec::with_capacity(files.len());
+        let mut unknown: Vec<(NoteLocation, String, String)> = Vec::new(); // (위치, 내용, 해시)
         for location in files {
             let content = match self.store.read(&location) {
                 Ok(c) => c,
                 Err(CoreError::NotUtf8(_)) => continue, // 텍스트가 아닌 파일은 메모로 취급하지 않음
                 Err(e) => return Err(e),
             };
-            let path = location.display_path();
             let hash = sha256_hex(&content);
-            let row = match indexed.remove(&path) {
+            match indexed.remove(&location.display_path()) {
                 Some(mut row) => {
                     if row.content_hash != hash {
-                        // 바깥 편집기에서 바뀐 내용
+                        // 바깥 편집기에서 바뀐 내용 → 동기화 중이면 올릴 변경으로 표시
                         row.version += 1;
                         row.content_hash = hash;
                         row.modified_at = iso(self.store.modified(&location)?);
+                        row.sync_json = mark_sync_dirty(row.sync_json.as_deref())?;
                         tx.execute(
-                            "UPDATE notes SET content_hash = ?2, version = ?3, modified_at = ?4 WHERE id = ?1",
-                            params![row.id, row.content_hash, row.version, row.modified_at],
+                            "UPDATE notes SET content_hash = ?2, version = ?3, modified_at = ?4, sync_json = ?5
+                             WHERE id = ?1",
+                            params![row.id, row.content_hash, row.version, row.modified_at, row.sync_json],
                         )?;
                     }
-                    row
+                    found.push((location, content, row));
                 }
-                None => {
-                    // 바깥에서 만든 파일 → 새 UUID로 등록
-                    let time = iso(self.store.modified(&location)?);
-                    let row = IndexRow {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        content_hash: hash,
-                        version: 1,
-                        created_at: time.clone(),
-                        modified_at: time,
-                        sync_json: None,
-                    };
-                    tx.execute(
-                        "INSERT INTO notes (id, path, format, content_hash, version, created_at, modified_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                        params![row.id, path, location.format.extension(), row.content_hash, row.version, row.created_at, row.modified_at],
-                    )?;
-                    row
-                }
+                None => unknown.push((location, content, hash)),
+            }
+        }
+        // 2) 사라진 행과 새 파일의 내용이 1:1로 같으면 바깥 이름 변경 → ID·세션·동기화 상태 유지
+        let mut missing: Vec<(String, IndexRow)> = indexed.into_iter().collect();
+        missing.sort_by(|a, b| a.0.cmp(&b.0));
+        let count = |hash: &str, list: &[(NoteLocation, String, String)]| {
+            list.iter().filter(|(_, _, h)| h == hash).count()
+        };
+        let mut renamed = vec![false; unknown.len()];
+        for (index, (location, content, hash)) in unknown.iter().enumerate() {
+            let candidates: Vec<usize> = missing
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, row))| row.content_hash == *hash)
+                .map(|(i, _)| i)
+                .collect();
+            if candidates.len() != 1 || count(hash, &unknown) != 1 {
+                continue; // 애매하면 추측하지 않음 (새 메모 + 사라진 메모로 처리)
+            }
+            let (_, mut row) = missing.remove(candidates[0]);
+            row.modified_at = iso(self.store.modified(location)?);
+            row.sync_json = mark_sync_dirty(row.sync_json.as_deref())?;
+            tx.execute(
+                "UPDATE notes SET path = ?2, format = ?3, modified_at = ?4, sync_json = ?5 WHERE id = ?1",
+                params![row.id, location.display_path(), location.format.extension(), row.modified_at, row.sync_json],
+            )?;
+            renamed[index] = true;
+            found.push((location.clone(), content.clone(), row));
+        }
+        // 3) 처음 보는 파일 → 새 UUID로 등록
+        for ((location, content, hash), was_renamed) in unknown.into_iter().zip(renamed) {
+            if was_renamed {
+                continue;
+            }
+            let time = iso(self.store.modified(&location)?);
+            let row = IndexRow {
+                id: uuid::Uuid::new_v4().to_string(),
+                content_hash: hash,
+                version: 1,
+                created_at: time.clone(),
+                modified_at: time,
+                sync_json: None,
             };
+            tx.execute(
+                "INSERT INTO notes (id, path, format, content_hash, version, created_at, modified_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![row.id, location.display_path(), location.format.extension(), row.content_hash, row.version, row.created_at, row.modified_at],
+            )?;
+            found.push((location, content, row));
+        }
+        // 4) 디스크에서 사라진 파일 → 인덱스에서 제거 (세션/Undo는 CASCADE).
+        //    서버에 올라간 적 있는 메모는 사용자가 고를 때까지 external_deletions에 보관
+        let now = iso(SystemTime::now());
+        for (path, row) in &missing {
+            if let Some(sync) = row.sync_json.as_deref().filter(|s| synced_version(s) > 0) {
+                let format = NoteLocation::from_relative(path)
+                    .map(|l| l.format.extension())
+                    .unwrap_or("md");
+                tx.execute(
+                    "INSERT INTO external_deletions (id, path, format, sync_json, detected_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(id) DO UPDATE SET path = excluded.path, format = excluded.format,
+                       sync_json = excluded.sync_json",
+                    params![row.id, path, format, sync, now],
+                )?;
+            }
+            tx.execute("DELETE FROM notes WHERE id = ?1", params![row.id])?;
+        }
+        let mut out = Vec::with_capacity(found.len());
+        for (location, content, row) in found {
             let (undo, redo) = load_history(&tx, &row.id)?;
             out.push(NoteRecord {
                 sessions: load_sessions(&tx, &row.id)?,
@@ -177,12 +249,44 @@ impl Workspace {
                     .transpose()?,
             });
         }
-        // 디스크에서 사라진 파일 → 인덱스에서 제거 (세션/Undo는 CASCADE)
-        for row in indexed.values() {
-            tx.execute("DELETE FROM notes WHERE id = ?1", params![row.id])?;
-        }
         tx.commit()?;
         Ok(out)
+    }
+
+    /// 앱 밖에서 지워진 동기화 메모 목록 (오래된 것부터)
+    pub fn list_external_deletions(&self) -> Result<Vec<ExternalDeletion>> {
+        let mut stmt = self.db.prepare(
+            "SELECT id, path, sync_json, detected_at FROM external_deletions ORDER BY detected_at, id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, path, sync, detected_at) = row?;
+            let location = NoteLocation::from_relative(&path)?;
+            out.push(ExternalDeletion {
+                id,
+                title: location.title,
+                folder: location.folder,
+                format: location.format,
+                sync: serde_json::from_str(&sync)?,
+                detected_at,
+            });
+        }
+        Ok(out)
+    }
+
+    /// 사용자가 처리한(서버에서 삭제 / 다시 받기) 항목을 목록에서 뺍니다.
+    pub fn forget_external_deletion(&self, id: &str) -> Result<()> {
+        self.db
+            .execute("DELETE FROM external_deletions WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     /// 메모를 저장합니다. 파일을 먼저 (원자적으로) 쓰고 인덱스를 갱신합니다.
@@ -249,24 +353,34 @@ impl Workspace {
             params![note.id, target_path, note.format.extension(), hash, version, created_at, note.modified_at,
                     note.sync.as_ref().map(serde_json::to_string).transpose()?],
         )?;
-        tx.execute(
-            "DELETE FROM edit_sessions WHERE note_id = ?1",
-            params![note.id],
-        )?;
-        for s in &note.sessions {
-            tx.execute(
-                "INSERT INTO edit_sessions (id, note_id, started_at, ended_at, active_ms, open_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                 ON CONFLICT(id) DO UPDATE SET note_id = excluded.note_id, started_at = excluded.started_at,
-                   ended_at = excluded.ended_at, active_ms = excluded.active_ms, open_ms = excluded.open_ms",
-                params![s.id, note.id, s.started_at, s.ended_at, s.active_ms as i64, s.open_ms as i64],
-            )?;
-        }
+        write_sessions(&tx, &note.id, &note.sessions)?;
         tx.execute(
             "INSERT INTO history_stacks (note_id, undo_json, redo_json) VALUES (?1, ?2, ?3)
              ON CONFLICT(note_id) DO UPDATE SET undo_json = excluded.undo_json, redo_json = excluded.redo_json",
             params![note.id, serde_json::to_string(&note.undo)?, serde_json::to_string(&note.redo)?],
         )?;
+        // 같은 메모가 다시 저장되면(다시 받기, 서버에서 내려옴) 바깥 삭제 기록은 의미가 없음
+        tx.execute(
+            "DELETE FROM external_deletions WHERE id = ?1",
+            params![note.id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 편집 세션 기록만 저장합니다 (본문은 건드리지 않음). 열어 두기만 한 메모의 주기 저장에 씁니다.
+    /// 본문까지 다시 쓰면 그 사이 바깥 편집기에서 고친 내용을 덮어쓰기 때문입니다 (ADR-0004).
+    /// 인덱스에 없는 메모(바깥에서 지워짐 등)는 아무것도 하지 않습니다.
+    pub fn save_sessions(&mut self, id: &str, sessions: &[EditSession]) -> Result<()> {
+        let tx = self.db.transaction()?;
+        let known: Option<i64> = tx
+            .query_row("SELECT 1 FROM notes WHERE id = ?1", params![id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if known.is_some() {
+            write_sessions(&tx, id, sessions)?;
+        }
         tx.commit()?;
         Ok(())
     }
@@ -346,6 +460,23 @@ fn load_index(tx: &Transaction<'_>) -> Result<HashMap<String, IndexRow>> {
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
+fn write_sessions(tx: &Transaction<'_>, note_id: &str, sessions: &[EditSession]) -> Result<()> {
+    tx.execute(
+        "DELETE FROM edit_sessions WHERE note_id = ?1",
+        params![note_id],
+    )?;
+    for s in sessions {
+        tx.execute(
+            "INSERT INTO edit_sessions (id, note_id, started_at, ended_at, active_ms, open_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(id) DO UPDATE SET note_id = excluded.note_id, started_at = excluded.started_at,
+               ended_at = excluded.ended_at, active_ms = excluded.active_ms, open_ms = excluded.open_ms",
+            params![s.id, note_id, s.started_at, s.ended_at, s.active_ms as i64, s.open_ms as i64],
+        )?;
+    }
+    Ok(())
+}
+
 fn load_sessions(tx: &Transaction<'_>, note_id: &str) -> Result<Vec<EditSession>> {
     let mut stmt = tx.prepare(
         "SELECT id, started_at, ended_at, active_ms, open_ms FROM edit_sessions
@@ -375,6 +506,25 @@ fn load_history(tx: &Transaction<'_>, note_id: &str) -> Result<(Vec<Snapshot>, V
         Some((undo, redo)) => Ok((serde_json::from_str(&undo)?, serde_json::from_str(&redo)?)),
         None => Ok((Vec::new(), Vec::new())),
     }
+}
+
+/// 동기화 상태 JSON에 '올릴 변경' 표시 (웹 SyncEngine.markDirty와 같음: 서버 거부 사유는 지움)
+fn mark_sync_dirty(sync: Option<&str>) -> Result<Option<String>> {
+    let Some(raw) = sync else { return Ok(None) };
+    let mut value: serde_json::Value = serde_json::from_str(raw)?;
+    if let Some(map) = value.as_object_mut() {
+        map.insert("dirty".into(), serde_json::Value::Bool(true));
+        map.remove("error");
+    }
+    Ok(Some(serde_json::to_string(&value)?))
+}
+
+/// 동기화 상태의 서버 버전 (0 = 아직 서버에 없음)
+fn synced_version(sync: &str) -> i64 {
+    serde_json::from_str::<serde_json::Value>(sync)
+        .ok()
+        .and_then(|v| v.get("version")?.as_i64())
+        .unwrap_or(0)
 }
 
 fn sha256_hex(content: &str) -> String {

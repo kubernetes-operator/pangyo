@@ -146,6 +146,142 @@ fn external_files_are_adopted_and_external_edits_detected() {
     assert!(ws.list_notes().unwrap().is_empty());
 }
 
+// ---------- 동기화 중인 메모의 바깥 변경 (ADR-0004) ----------
+
+fn synced(id: &str, title: &str, content: &str, version: i64) -> NoteRecord {
+    let mut n = note(id, "", title, content);
+    n.sync = Some(serde_json::json!({ "version": version, "dirty": false, "error": "old" }));
+    n
+}
+
+#[test]
+fn external_edit_of_synced_note_is_marked_for_upload() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.save_note(&synced(ID_A, "동기화", "v1", 3)).unwrap();
+    assert_eq!(
+        ws.list_notes().unwrap()[0].sync.as_ref().unwrap()["dirty"],
+        false
+    );
+    fs::write(f.notes.join("동기화.md"), "바깥에서 고침").unwrap();
+    let listed = ws.list_notes().unwrap();
+    let sync = listed[0].sync.as_ref().unwrap();
+    assert_eq!(listed[0].content, "바깥에서 고침");
+    assert_eq!(sync["dirty"], true, "올릴 변경으로 표시");
+    assert_eq!(sync["version"], 3, "서버 기준 버전은 그대로");
+    assert!(sync.get("error").is_none(), "이전 거부 사유는 지움");
+    // 한 번 표시한 뒤 다시 조회해도 그대로 (중복 처리 없음)
+    assert_eq!(
+        ws.list_notes().unwrap()[0].sync.as_ref().unwrap()["dirty"],
+        true
+    );
+}
+
+#[test]
+fn external_rename_keeps_id_sessions_and_sync_state() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.save_note(&synced(ID_A, "원래", "같은 내용", 2)).unwrap();
+    let mut other = note(ID_B, "", "다른것", "다른 내용");
+    other.sessions.clear(); // 세션 ID가 겹치지 않게
+    ws.save_note(&other).unwrap();
+    fs::create_dir_all(f.notes.join("옮김")).unwrap();
+    fs::rename(f.notes.join("원래.md"), f.notes.join("옮김/새이름.txt")).unwrap();
+    let listed = ws.list_notes().unwrap();
+    assert_eq!(listed.len(), 2);
+    let moved = listed.iter().find(|n| n.id == ID_A).expect("같은 ID 유지");
+    assert_eq!(
+        (moved.folder.as_str(), moved.title.as_str(), moved.format),
+        ("옮김", "새이름", NoteFormat::Txt)
+    );
+    assert_eq!(moved.content, "같은 내용");
+    assert_eq!(moved.sessions.len(), 1, "세션 기록 유지");
+    assert_eq!(
+        moved.sync.as_ref().unwrap()["dirty"],
+        true,
+        "이름 변경도 올릴 변경"
+    );
+    assert!(
+        ws.list_external_deletions().unwrap().is_empty(),
+        "삭제로 보지 않음"
+    );
+}
+
+#[test]
+fn ambiguous_external_rename_is_not_guessed() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.save_note(&synced(ID_A, "가", "똑같음", 1)).unwrap();
+    ws.save_note(&synced(ID_B, "나", "똑같음", 1)).unwrap();
+    fs::remove_file(f.notes.join("가.md")).unwrap();
+    fs::remove_file(f.notes.join("나.md")).unwrap();
+    fs::write(f.notes.join("다.md"), "똑같음").unwrap();
+    let listed = ws.list_notes().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(
+        listed[0].id != ID_A && listed[0].id != ID_B,
+        "어느 쪽인지 모르면 새 메모"
+    );
+    assert_eq!(ws.list_external_deletions().unwrap().len(), 2);
+}
+
+#[test]
+fn external_delete_of_synced_note_waits_for_user_choice() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.save_note(&synced(ID_A, "서버에있음", "x", 5)).unwrap();
+    let mut local_only = note(ID_B, "", "로컬전용", "y");
+    local_only.sync = Some(serde_json::json!({ "version": 0, "dirty": true }));
+    ws.save_note(&local_only).unwrap();
+    fs::remove_file(f.notes.join("서버에있음.md")).unwrap();
+    fs::remove_file(f.notes.join("로컬전용.md")).unwrap();
+    assert!(ws.list_notes().unwrap().is_empty());
+    let pending = ws.list_external_deletions().unwrap();
+    assert_eq!(
+        pending.len(),
+        1,
+        "서버에 올라간 적 없는 메모는 보관하지 않음"
+    );
+    assert_eq!(pending[0].id, ID_A);
+    assert_eq!(pending[0].title, "서버에있음");
+    assert_eq!(pending[0].sync["version"], 5);
+    // 다시 조회해도 한 번만
+    ws.list_notes().unwrap();
+    assert_eq!(ws.list_external_deletions().unwrap().len(), 1);
+    // 다시 받기 = 같은 ID로 저장 → 기록이 사라짐
+    ws.save_note(&synced(ID_A, "서버에있음", "x", 5)).unwrap();
+    assert!(ws.list_external_deletions().unwrap().is_empty());
+    // 서버에서도 삭제한 경우 → 기록만 지움
+    fs::remove_file(f.notes.join("서버에있음.md")).unwrap();
+    ws.list_notes().unwrap();
+    ws.forget_external_deletion(ID_A).unwrap();
+    assert!(ws.list_external_deletions().unwrap().is_empty());
+}
+
+#[test]
+fn saving_sessions_only_never_overwrites_external_edits() {
+    let f = fixture();
+    let mut ws = f.open();
+    let mut n = synced(ID_A, "열어둠", "앱이 아는 내용", 1);
+    ws.save_note(&n).unwrap();
+    fs::write(f.notes.join("열어둠.md"), "바깥에서 고친 내용").unwrap();
+    n.sessions[0].open_ms = 60_000; // 열어 두기만 한 메모의 주기 저장
+    ws.save_sessions(ID_A, &n.sessions).unwrap();
+    let listed = ws.list_notes().unwrap();
+    assert_eq!(
+        listed[0].content, "바깥에서 고친 내용",
+        "본문을 덮어쓰지 않음"
+    );
+    assert_eq!(listed[0].sessions[0].open_ms, 60_000, "세션은 저장");
+    assert_eq!(
+        listed[0].sync.as_ref().unwrap()["dirty"],
+        true,
+        "바깥 편집은 올릴 변경"
+    );
+    ws.save_sessions("33333333-3333-4333-8333-333333333333", &n.sessions)
+        .unwrap(); // 없는 메모는 무시
+}
+
 #[test]
 fn sessions_are_replaced_not_duplicated() {
     let f = fixture();
@@ -218,7 +354,7 @@ fn migrations_are_idempotent() {
     let version: i64 = db
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 4);
+    assert_eq!(version, 5);
 }
 
 fn uuid_like(s: &str) -> bool {

@@ -3,7 +3,9 @@ import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
-import { accountApi, searchApi, type Account } from '../account/api';
+import { accountApi, searchApi, ServerUnavailable, setTransport } from '../account/api';
+import type { DeletionChoice } from '../account/device-panel';
+import type { DeviceInfo, ExternalDeletion } from '../storage/tauri';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
 import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
@@ -48,6 +50,19 @@ const state = {
   lease: null as LeaseState | null, // 선택한 메모의 편집 임대 상태
   leaseRequest: null as Promise<void> | null,
   lastEditAt: 0, // 마지막 편집 시각 (임대 자동 반납 판단)
+  syncTick: null as Promise<void> | null,
+  /** 본문·제목·형식·Undo를 바꿨지만 아직 저장하지 않은 메모 (아니면 세션 기록만 저장) */
+  unsaved: new Set<string>(),
+};
+
+// 데스크톱·모바일 앱의 장비 연결 상태 (ADR-0004). 웹에서는 쓰지 않음
+const device = {
+  info: null as DeviceInfo | null,
+  revoked: false, // 서버가 401: 장비 폐기됨
+  deletions: [] as ExternalDeletion[], // 앱 밖에서 지워진 동기화 메모
+  retry: undefined as ReturnType<typeof setTimeout> | undefined,
+  api: null as typeof import('../storage/tauri').deviceApi | null,
+  panel: null as { open(): Promise<void>; refresh(): Promise<void> } | null,
 };
 /** 이 탭의 동기화 클라이언트 ID (탭마다 달라서 같은 브라우저의 두 탭도 동시에 편집하지 못함) */
 const CLIENT_ID = newClientId();
@@ -240,8 +255,8 @@ function setReadOnly(locked: boolean): void {
 }
 
 function renderSyncInfo(): void {
-  $('sync-status').textContent = state.sync || state.syncBlocked
-    ? syncStatusText(state.syncStatus, state.locale, state.syncBlocked)
+  $('sync-status').textContent = state.sync || state.syncBlocked || device.revoked
+    ? syncStatusText(state.syncStatus, state.locale, state.syncBlocked, device.deletions.length, device.revoked)
     : '';
   renderSyncBanner($('sync-banner'), {
     note: state.note,
@@ -256,10 +271,10 @@ function renderSyncInfo(): void {
 function syncStore(): SyncStore {
   return {
     list: () => state.notes,
-    save: (note) => persist(note),
+    save: (note) => persist(note, true),
     add: async (note) => {
+      await repo.saveNote(note); // 먼저 저장: 디스크 다시 읽기(refreshFromDisk)가 저장 전 메모를 지우지 않게
       state.notes.push(note);
-      await repo.saveNote(note);
     },
     remove: async (id) => {
       state.notes = state.notes.filter((n) => n.id !== id);
@@ -283,18 +298,18 @@ function syncStore(): SyncStore {
   };
 }
 
-/** 로그인 확인 시 동기화 시작 (이미 실행 중이면 무시) */
-async function startSync(account: Account): Promise<void> {
-  if (state.sync || isTauri()) return;
+/** 로그인(웹) 또는 장비 연결(앱) 확인 시 동기화 시작 (이미 실행 중이면 무시) */
+async function startSync(accountId: string, label: string): Promise<void> {
+  if (state.sync) return;
   const boundTo = await repo.getMeta<string>('syncAccountId');
-  if (boundTo && boundTo !== account.id) {
+  if (boundTo && boundTo !== accountId) {
     state.syncBlocked = true; // 다른 계정의 메모를 섞지 않음
     renderSyncInfo();
     return;
   }
   const engine = new SyncEngine(syncApi, syncStore(), {
     clientId: CLIENT_ID,
-    label: deviceLabel(),
+    label,
     onStatus: (status) => {
       state.syncStatus = status;
       renderSyncInfo();
@@ -310,12 +325,175 @@ async function startSync(account: Account): Promise<void> {
   state.sync = engine;
   state.syncBlocked = false;
   if (!boundTo) {
-    await repo.setMeta('syncAccountId', account.id);
+    await repo.setMeta('syncAccountId', accountId);
     await engine.adoptLocalNotes(); // 이 기기의 기존 메모를 계정에 올림
   }
-  await engine.syncOnce();
-  state.syncTimer = setInterval(() => void engine.syncOnce(), SETTINGS.syncIntervalMs);
+  await syncTick();
+  state.syncTimer = setInterval(() => void syncTick(), SETTINGS.syncIntervalMs);
   renderSyncInfo();
+}
+
+/**
+ * 동기화 한 번. 앱(파일 저장소)은 그 전에 디스크를 다시 읽어 바깥 편집·이름 변경·새 파일을 반영하고,
+ * 끝난 뒤 바깥 삭제 목록을 갱신합니다. 겹쳐 실행하지 않음.
+ */
+function syncTick(): Promise<void> {
+  const engine = state.sync;
+  if (!engine) return Promise.resolve();
+  state.syncTick ??= (async () => {
+    if (isTauri()) {
+      await engine.idle();
+      await refreshFromDisk();
+      await engine.adoptLocalNotes(); // 바깥에서 새로 만든 파일도 올리기 대상
+    }
+    await engine.syncOnce();
+    if (isTauri()) await refreshDeletions();
+  })()
+    .catch(console.error)
+    .finally(() => {
+      state.syncTick = null;
+    });
+  return state.syncTick;
+}
+
+const sameNote = (a: Note, b: Note) =>
+  a.title === b.title && a.folder === b.folder && a.format === b.format && a.content === b.content &&
+  a.modifiedAt === b.modifiedAt && JSON.stringify(a.sync ?? null) === JSON.stringify(b.sync ?? null);
+
+/** 파일 저장소를 다시 읽어 화면 상태에 반영 (편집 중인 메모는 건드리지 않음) */
+async function refreshFromDisk(): Promise<void> {
+  await state.saving.catch(() => undefined);
+  const before = new Set(state.notes.map((n) => n.id));
+  const disk = await repo.listNotes();
+  const fresh = new Map(disk.map((n) => [n.id, n]));
+  // 저장하지 않은 편집이 있거나 편집 중(임대 보유)인 메모는 화면 쪽이 최신 → 디스크 내용으로 바꾸지 않음
+  const busy = (n: Note) => state.unsaved.has(n.id) || (n === state.note && state.lease?.kind === 'held');
+  const changed: string[] = [];
+  const next: Note[] = [];
+  for (const current of state.notes) {
+    const found = fresh.get(current.id);
+    fresh.delete(current.id);
+    if (!found) {
+      // 디스크에 없음: 다시 읽기 전부터 있던 메모면 바깥에서 지워진 것 (읽는 동안 새로 생긴 메모는 유지)
+      if (before.has(current.id) && !busy(current)) changed.push(current.id);
+      else next.push(current);
+    } else if (sameNote(current, found) || busy(current)) {
+      next.push(current);
+    } else if (current === state.note) {
+      // 선택한 메모는 같은 객체를 유지 (진행 중인 편집 세션 기록이 이 객체에 있음)
+      const { title, folder, format, content, modifiedAt, sync } = found;
+      Object.assign(current, { title, folder, format, content, modifiedAt, sync });
+      next.push(current);
+      changed.push(current.id);
+    } else {
+      next.push(found);
+      changed.push(found.id);
+    }
+  }
+  for (const added of fresh.values()) {
+    next.push(added);
+    changed.push(added.id);
+  }
+  state.notes = next;
+  state.folders = await repo.listFolders();
+  if (state.note && !next.includes(state.note)) {
+    state.selectedId = null;
+    state.note = null;
+    state.lease = null;
+    state.activeSessionId = null;
+  }
+  if (changed.length) {
+    displayTree();
+    if (!state.note || changed.includes(state.note.id)) renderEditor();
+  }
+}
+
+/** 앱 밖에서 지워진 동기화 메모 목록 갱신 → 상단에 '확인 필요' 표시 */
+async function refreshDeletions(): Promise<void> {
+  if (!device.api) return;
+  device.deletions = await device.api.externalDeletions().catch(() => device.deletions);
+  renderSyncInfo();
+}
+
+/** 바깥 삭제 처리: 서버에서도 삭제 / 다시 받기 */
+async function resolveDeletion(item: ExternalDeletion, choice: DeletionChoice): Promise<string> {
+  const engine = state.sync;
+  if (!engine || !device.api) return 'notSynced';
+  let outcome: string;
+  try {
+    if (choice === 'restore') {
+      outcome = (await engine.restoreRemote(item.id)) ? 'restored' : 'missing';
+    } else {
+      const result = await engine.deleteRemote(item.id, item.sync.version);
+      outcome = result;
+      // 지운 뒤 다른 기기에서 바뀌었으면 지우지 않고 서버 내용을 다시 받음 (어느 쪽도 잃지 않음)
+      if (result === 'changed') await engine.restoreRemote(item.id);
+    }
+  } catch (e) {
+    return (e as { offline?: boolean }).offline ? 'offline' : String((e as Error).message ?? e);
+  }
+  if (outcome !== 'busy') await device.api.forgetExternalDeletion(item.id).catch(console.error);
+  await refreshDeletions();
+  displayTree();
+  return outcome;
+}
+
+/** 앱: 장비 연결이 확인되면 계정을 확인하고 동기화 시작 (오프라인이면 이전에 묶인 계정으로) */
+async function startDeviceSync(info: DeviceInfo): Promise<void> {
+  device.info = info;
+  device.revoked = false;
+  clearTimeout(device.retry);
+  let accountId: string | undefined;
+  try {
+    const account = await accountApi.me();
+    if (!account) return onDeviceUnauthorized();
+    accountId = account.id;
+  } catch (e) {
+    if (!(e instanceof ServerUnavailable)) console.error(e);
+    accountId = await repo.getMeta<string>('syncAccountId');
+  }
+  if (!accountId) {
+    // 처음 연결했는데 서버에 닿지 않음 → 잠시 뒤 다시
+    device.retry = setTimeout(() => void startDeviceSync(info), SETTINGS.syncIntervalMs);
+    renderSyncInfo();
+    return;
+  }
+  await startSync(accountId, info.deviceName);
+}
+
+async function stopDeviceSync(): Promise<void> {
+  device.info = null;
+  device.revoked = false;
+  clearTimeout(device.retry);
+  await stopSync();
+}
+
+/** 서버가 장비 토큰을 거부(401): 동기화를 멈추고 다시 연결하도록 안내 (메모는 이 기기에 그대로) */
+function onDeviceUnauthorized(): void {
+  if (device.revoked) return;
+  device.revoked = true;
+  void stopSync().then(() => device.panel?.refresh());
+}
+
+/** 앱: 서버 요청을 장비 토큰 전송으로 바꾸고 장비 연결 화면을 붙임 */
+async function setupDevice(): Promise<void> {
+  const tauri = await import('../storage/tauri');
+  const { createDevicePanel } = await import('../account/device-panel');
+  setTransport(tauri.deviceTransport(onDeviceUnauthorized));
+  device.api = tauri.deviceApi;
+  const panel = createDevicePanel($<HTMLDialogElement>('account-dialog'), () => state.locale, {
+    onPaired: (info) => startDeviceSync(info),
+    onUnpaired: () => stopDeviceSync(),
+    statusText: () => syncStatusText(state.syncStatus, state.locale, state.syncBlocked, device.deletions.length, device.revoked),
+    resolveDeletion,
+    revoked: () => device.revoked,
+  });
+  device.panel = panel;
+  $('account-btn').onclick = () => void panel.open();
+  $('sync-status').onclick = () => void panel.open();
+  const info = await tauri.deviceApi.status();
+  if (info) await startDeviceSync(info);
+  await refreshDeletions();
 }
 
 async function stopSync(): Promise<void> {
@@ -375,10 +553,18 @@ async function resolveConflict(choice: ConflictChoice): Promise<void> {
   displayTree();
 }
 
-async function persist(note: Note): Promise<void> {
+/**
+ * 저장. 본문을 바꾸지 않은 메모는(full=false) 세션 기록만 저장해, 열어 둔 사이 바깥 편집기에서 고친 파일을
+ * 덮어쓰지 않습니다 (파일 저장소만 해당). 동기화가 바꾼 메모는 full=true.
+ */
+async function persist(note: Note, full = false): Promise<void> {
   // 같은 파일의 입력 순서를 보장하도록 직렬화합니다.
   const copy = structuredClone(note);
-  state.saving = state.saving.catch(console.error).then(() => repo.saveNote(copy));
+  const sessionsOnly = !full && !state.unsaved.has(note.id) && !!repo.saveSessions;
+  state.unsaved.delete(note.id);
+  state.saving = state.saving
+    .catch(console.error)
+    .then(() => (sessionsOnly ? repo.saveSessions!(copy) : repo.saveNote(copy)));
   try {
     await state.saving;
     $('save-status').textContent = 'LOCAL SAVED';
@@ -454,6 +640,7 @@ function applyEdit(field: 'title' | 'content', value: string): void {
   remember(note, SETTINGS.historyLimit);
   note[field] = value;
   note.modifiedAt = nowISO();
+  state.unsaved.add(note.id);
   editActivity();
   noteChanged(note);
   scheduleSave();
@@ -464,6 +651,7 @@ function restoreHistory(kind: HistoryKind): void {
   const note = state.note;
   if (!note || !restore(note, kind, SETTINGS.historyLimit)) return;
   note.modifiedAt = nowISO();
+  state.unsaved.add(note.id);
   editActivity();
   noteChanged(note);
   scheduleSave();
@@ -590,6 +778,7 @@ function bindEvents(): void {
     remember(note, SETTINGS.historyLimit);
     note.format = (e.target as HTMLSelectElement).value === 'txt' ? 'txt' : 'md';
     note.modifiedAt = nowISO();
+    state.unsaved.add(note.id);
     noteChanged(note);
     scheduleSave();
     renderEditor();
@@ -599,22 +788,19 @@ function bindEvents(): void {
   $('language-btn').onclick = () => setLanguage(state.locale === 'ko' ? 'en' : 'ko');
   $('toggle-btn').onclick = toggleFocus;
   $('split-btn').onclick = () => changeMode('split');
-  // 계정 화면: 웹(서버와 같은 출처)에서만. 데스크톱/모바일 앱은 장비 등록으로 연결 예정(로드맵 06)
-  const accountButton = $('account-btn');
-  if (isTauri()) {
-    accountButton.hidden = true;
-  } else {
+  // 계정 화면: 웹(서버와 같은 출처). 데스크톱/모바일 앱은 장비 연결 화면(setupDevice)
+  if (!isTauri()) {
     const panel = createAccountPanel($<HTMLDialogElement>('account-dialog'), () => state.locale, {
-      onSignedIn: (account) => void startSync(account),
+      onSignedIn: (account) => void startSync(account.id, deviceLabel()),
       onSignedOut: () => void stopSync(),
     });
-    accountButton.onclick = () => void panel.open();
+    $('account-btn').onclick = () => void panel.open();
   }
   $<HTMLDetailsElement>('related-panel').addEventListener('toggle', () => renderRelated());
   // 편집 시작 = 에디터/제목에 들어갈 때 임대 요청 (열기만 해서는 잠그지 않음)
   editor().addEventListener('focus', () => void requestEdit());
   $<HTMLInputElement>('title').addEventListener('focus', () => void requestEdit());
-  window.addEventListener('online', () => void state.sync?.syncOnce());
+  window.addEventListener('online', () => void syncTick());
   $('undo-btn').onclick = () => restoreHistory('undo');
   $('redo-btn').onclick = () => restoreHistory('redo');
   $('indent-btn').onclick = () => indentSelection();
@@ -657,7 +843,7 @@ function bindEvents(): void {
       void flushSave();
     } else {
       startSession();
-      void state.sync?.syncOnce();
+      void syncTick();
     }
   });
   // 종료 직전 저장은 최선 노력. 네이티브 어댑터는 내구성 있는 저널을 사용할 예정.
@@ -691,11 +877,13 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   bindEvents();
   setInterval(updateTimer, SETTINGS.timerTickMs);
   setInterval(renderClock, SETTINGS.clockTickMs);
-  // 이미 로그인한 브라우저면 바로 동기화 (서버가 없으면 조용히 로컬 전용)
-  if (!isTauri()) {
+  // 이미 로그인한 브라우저 / 연결된 장비면 바로 동기화 (서버가 없으면 조용히 로컬 전용)
+  if (isTauri()) {
+    void setupDevice().catch(console.error);
+  } else {
     accountApi
       .me()
-      .then((account) => account && startSync(account))
+      .then((account) => account && startSync(account.id, deviceLabel()))
       .catch(() => undefined);
   }
 }

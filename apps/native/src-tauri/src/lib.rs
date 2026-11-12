@@ -13,14 +13,25 @@ const INDEX_FILE: &str = "index.sqlite";
 const INDEX_PATH_ENV: &str = "MEMONEST_INDEX_PATH";
 /// 진단: 1이면 웹뷰 JS 콘솔 메시지를 표준 출력으로 보냄 (리눅스 WebKitGTK)
 const WEBVIEW_CONSOLE_ENV: &str = "MEMONEST_WEBVIEW_CONSOLE";
+/// 시험 전용(`e2e` feature): 페이지 로드 후 실행할 JS 파일 경로
+#[cfg(feature = "e2e")]
+const E2E_SCRIPT_ENV: &str = "MEMONEST_E2E_SCRIPT";
 
-use std::{path::PathBuf, sync::Mutex};
+mod remote;
 
-use memonest_core::workspace::{NoteRecord, Workspace};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+
+use memonest_core::workspace::{EditSession, ExternalDeletion, NoteRecord, Workspace};
+use remote::{DeviceInfo, Remote, ServerResponse};
 use tauri::{Manager, State};
 
 /// 명령 처리 중 동시 접근을 막기 위해 작업공간을 잠급니다 (창 하나, 요청 순차 처리).
 struct AppState(Mutex<Workspace>);
+/// 서버 연결 (장비 토큰은 여기서만 다룸, 화면에 넘기지 않음)
+struct RemoteState(Arc<Remote>);
 
 type CommandResult<T> = Result<T, String>;
 
@@ -52,6 +63,15 @@ fn save_note(state: State<'_, AppState>, note: NoteRecord) -> CommandResult<()> 
 }
 
 #[tauri::command]
+fn save_sessions(
+    state: State<'_, AppState>,
+    id: String,
+    sessions: Vec<EditSession>,
+) -> CommandResult<()> {
+    with_workspace(&state, |ws| ws.save_sessions(&id, &sessions))
+}
+
+#[tauri::command]
 fn delete_note(state: State<'_, AppState>, id: String) -> CommandResult<()> {
     with_workspace(&state, |ws| ws.delete_note(&id))
 }
@@ -80,6 +100,61 @@ fn set_meta(
     with_workspace(&state, |ws| ws.set_meta(&key, &value))
 }
 
+#[tauri::command]
+fn list_external_deletions(state: State<'_, AppState>) -> CommandResult<Vec<ExternalDeletion>> {
+    with_workspace(&state, |ws| ws.list_external_deletions())
+}
+
+#[tauri::command]
+fn forget_external_deletion(state: State<'_, AppState>, id: String) -> CommandResult<()> {
+    with_workspace(&state, |ws| ws.forget_external_deletion(&id))
+}
+
+/// 네트워크·보안 저장소 작업은 화면을 멈추지 않도록 별도 스레드에서
+async fn blocking<T: Send + 'static>(
+    remote: &State<'_, RemoteState>,
+    f: impl FnOnce(&Remote) -> CommandResult<T> + Send + 'static,
+) -> CommandResult<T> {
+    let remote = Arc::clone(&remote.0);
+    tauri::async_runtime::spawn_blocking(move || f(&remote))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn device_status(remote: State<'_, RemoteState>) -> CommandResult<Option<DeviceInfo>> {
+    blocking(&remote, |r| Ok(r.status())).await
+}
+
+#[tauri::command]
+async fn device_pair(
+    remote: State<'_, RemoteState>,
+    server_url: String,
+    code: String,
+    device_name: String,
+    now: String,
+) -> CommandResult<DeviceInfo> {
+    blocking(&remote, move |r| {
+        r.pair(&server_url, &code, &device_name, std::env::consts::OS, now)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn device_unpair(remote: State<'_, RemoteState>) -> CommandResult<()> {
+    blocking(&remote, |r| r.unpair()).await
+}
+
+#[tauri::command]
+async fn server_request(
+    remote: State<'_, RemoteState>,
+    method: String,
+    path: String,
+    body: Option<serde_json::Value>,
+) -> CommandResult<ServerResponse> {
+    blocking(&remote, move |r| r.request(&method, &path, body.as_ref())).await
+}
+
 fn notes_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
     if let Some(dir) = std::env::var_os(NOTES_DIR_ENV) {
         return Ok(PathBuf::from(dir));
@@ -104,6 +179,14 @@ pub fn run() {
                     webview.label()
                 );
             }
+            #[cfg(feature = "e2e")]
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                if let Some(script) = std::env::var_os(E2E_SCRIPT_ENV)
+                    .and_then(|path| std::fs::read_to_string(path).ok())
+                {
+                    let _ = webview.eval(&script);
+                }
+            }
         })
         .setup(|app| {
             let index = match std::env::var_os(INDEX_PATH_ENV) {
@@ -112,6 +195,9 @@ pub fn run() {
             };
             let workspace = Workspace::open(notes_dir(app)?, &index)?;
             app.manage(AppState(Mutex::new(workspace)));
+            app.manage(RemoteState(Arc::new(Remote::new(
+                app.path().app_data_dir()?,
+            ))));
             if std::env::var_os(WEBVIEW_CONSOLE_ENV).is_some_and(|v| v == "1") {
                 enable_console_to_stdout(app);
             }
@@ -121,11 +207,18 @@ pub fn run() {
             notes_root,
             list_notes,
             save_note,
+            save_sessions,
             delete_note,
             list_folders,
             create_folder,
             get_meta,
-            set_meta
+            set_meta,
+            list_external_deletions,
+            forget_external_deletion,
+            device_status,
+            device_pair,
+            device_unpair,
+            server_request
         ])
         .run(tauri::generate_context!())
         .expect("MemoNest native application failed to start");
