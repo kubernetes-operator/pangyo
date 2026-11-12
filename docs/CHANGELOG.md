@@ -160,3 +160,13 @@
   - 확인: 수집 대상 `serviceMonitor/memonest/memonest-api/0` up, `memonest_db_up` 1, 계정 상한 999, 알림 7개 모두 `inactive`/정상 평가, Grafana 사이드카가 `memonest.json` 적재, 외부 `/metrics`는 웹 앱 HTML만(지표 0줄).
   - 배포 중 외부 `/healthz` 60회: 200 57회, 시간 초과 3회(기존 외부 경로 지연과 같은 양상).
 - 후속: Alertmanager 복구·알림 받을 곳(메일/메신저) 결정, Postgres 자체 지표(postgres-exporter), 외부 경로 지연 측정(Cloudflare→게이트웨이).
+
+## Unreleased — 로드맵 10: 다운로드 링크 일회용 (`feature/roadmap10-single-use-downloads`)
+- 변경 파일: `crates/server/src/downloads.rs`, `db/postgres/007_download_links_single_use.sql`(신규, `claimed_at`·`completed_at` 열 추가), `crates/server/tests/downloads.rs`, OpenAPI 설명, `infra/k8s/README.md`, docs/12 T-26.
+- 동작: `GET /dl/{token}`이 링크를 원자적으로 "받는 중"으로 차지 → 파일 끝까지 보내면 `completed_at` 기록, 이후 같은 링크는 404.
+  - 받는 중에는 같은 링크의 다른 요청 404(유출된 링크로 동시 수신 차단).
+  - 중간에 끊기거나(연결 끊김) HEAD처럼 본문을 보내지 않은 요청은 표시를 풀어 5분 안에 재시도 가능(큰 설치 파일·느린 외부 경로 대비). 다시 받으려면 앱에서 새 링크.
+  - 서버가 받는 도중 죽으면 그 링크는 만료(5분)까지 잠김 → 새 링크로 받으면 됨. 웹 화면은 누를 때마다 새 링크를 만들므로 변경 없음.
+- 테스트: 다운로드 통합 테스트 갱신 + 1개 추가(T-26). 완료 기록을 빼면 실패하는 것 확인(회귀 검출).
+- 위험: "끝까지 보냄"은 서버가 파일을 다 읽어 보낸 시점 기준(중간 프록시·클라이언트 수신 완료까지는 보장하지 않음). 이어받기(Range)는 지원하지 않음(기존과 같음).
+

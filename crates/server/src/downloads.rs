@@ -3,11 +3,18 @@
 //! - 목록: `GET /api/v1/downloads` — 로그인 사용자(세션·장비)만. 저장 경로는 응답에 넣지 않음
 //! - 링크: `POST /api/v1/downloads/{id}/link` → `/dl/<임의 토큰>` (기본 5분 유효, 토큰은 해시만 저장)
 //! - 받기: `GET /dl/{token}` — 토큰이 곧 권한. 큰 파일은 나눠서 전송(스트리밍), 응답 시간 제한 없음
+//! - **일회용**(로드맵 10): 받는 동안에는 같은 링크의 다른 요청을 거절하고, 끝까지 보내면 링크를 닫음.
+//!   중간에 끊기면(연결 끊김, HEAD 요청 등) 다시 열어 유효 시간 안에서 재시도 가능
 //!
 //! 파일 목록은 `DOWNLOADS_DIR/manifest.json` (scripts/publish-downloads.sh 가 만듦):
 //! `{"version":"0.1.0","files":[{"id":"windows-msi","platform":"Windows","label":"설치 프로그램 (.msi)",
 //!   "file":"0.1.0/MemoNest_0.1.0_x64_en-US.msi","size":123,"sha256":"..."}]}`
-use std::path::{Component, Path as FsPath, PathBuf};
+use std::{
+    io,
+    path::{Component, Path as FsPath, PathBuf},
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use axum::{
     body::Body,
@@ -18,6 +25,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::{
     accounts::{CurrentAccount, Scope},
@@ -166,7 +174,7 @@ pub async fn create_link(
     ))
 }
 
-/// 토큰 주소로 파일 받기. 유효 시간 안에서는 다시 받을 수 있음(이어받기 대비)
+/// 토큰 주소로 파일 받기. 한 번 끝까지 받으면 링크가 닫힘(일회용)
 pub async fn download(State(state): State<AppState>, Path(token): Path<String>) -> Response {
     match serve(&state, &token).await {
         Ok(r) => r,
@@ -179,20 +187,31 @@ async fn serve(state: &AppState, token: &str) -> ApiResult<Response> {
         ApiError::new(
             StatusCode::NOT_FOUND,
             "link_invalid",
-            "링크가 없거나 만료되었습니다. 앱에서 다시 받으세요",
+            "링크가 없거나 만료되었거나 이미 사용되었습니다. 앱에서 다시 받으세요",
         )
     };
     if token.len() > 64 {
         return Err(gone());
     }
+    let db = state.db()?.clone();
+    let token_hash = security::token_hash(token);
+    // 받는 중 표시를 원자적으로 차지: 이미 받는 중이거나 다 받은 링크는 거절
     let row: Option<(String,)> = sqlx::query_as(
-        "UPDATE download_links SET first_used_at = COALESCE(first_used_at, NOW())
-         WHERE token_hash = $1 AND expires_at > NOW() RETURNING file_id",
+        "UPDATE download_links
+         SET claimed_at = NOW(), first_used_at = COALESCE(first_used_at, NOW())
+         WHERE token_hash = $1 AND expires_at > NOW()
+           AND claimed_at IS NULL AND completed_at IS NULL
+         RETURNING file_id",
     )
-    .bind(security::token_hash(token))
-    .fetch_optional(state.db()?)
+    .bind(&token_hash)
+    .fetch_optional(&db)
     .await?;
     let (file_id,) = row.ok_or_else(gone)?;
+    // 여기부터 실패하거나 응답 본문이 끝까지 가지 않으면 Claim이 drop 되며 링크를 다시 엶
+    let claim = Claim {
+        db: Some(db),
+        token_hash,
+    };
     let (dir, manifest) = load_manifest(state).await?;
     let entry = manifest
         .files
@@ -223,7 +242,10 @@ async fn serve(state: &AppState, token: &str) -> ApiResult<Response> {
         "attachment; filename=\"{ascii}\"; filename*=UTF-8''{}",
         percent_encode(&name)
     );
-    let body = Body::from_stream(tokio_util::io::ReaderStream::new(file));
+    let body = Body::from_stream(tokio_util::io::ReaderStream::new(OneShotFile {
+        file,
+        claim: Some(claim),
+    }));
     let mut response = (StatusCode::OK, body).into_response();
     let h = response.headers_mut();
     h.insert(
@@ -238,6 +260,69 @@ async fn serve(state: &AppState, token: &str) -> ApiResult<Response> {
         h.insert("x-content-sha256", v);
     }
     Ok(response)
+}
+
+/// 받는 중 표시. 끝까지 보내면 `complete`, 그 전에 drop 되면 표시를 풀어 재시도 가능하게 함
+struct Claim {
+    db: Option<sqlx::PgPool>,
+    token_hash: String,
+}
+
+impl Claim {
+    fn finish(mut self, completed: bool) {
+        let (Some(db), Ok(rt)) = (self.db.take(), tokio::runtime::Handle::try_current()) else {
+            return;
+        };
+        let hash = std::mem::take(&mut self.token_hash);
+        rt.spawn(async move {
+            let sql = if completed {
+                "UPDATE download_links SET completed_at = NOW() WHERE token_hash = $1"
+            } else {
+                "UPDATE download_links SET claimed_at = NULL
+                 WHERE token_hash = $1 AND completed_at IS NULL"
+            };
+            if let Err(e) = sqlx::query(sql).bind(&hash).execute(&db).await {
+                tracing::error!(error = %e, completed, "download link state update failed");
+            }
+        });
+    }
+}
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        if self.db.is_some() {
+            let claim = Claim {
+                db: self.db.take(),
+                token_hash: std::mem::take(&mut self.token_hash),
+            };
+            claim.finish(false);
+        }
+    }
+}
+
+/// 파일 끝(EOF)까지 읽히면 링크를 닫는 읽기 래퍼
+struct OneShotFile {
+    file: tokio::fs::File,
+    claim: Option<Claim>,
+}
+
+impl AsyncRead for OneShotFile {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let before = buf.filled().len();
+        let result = Pin::new(&mut self.file).poll_read(cx, buf);
+        if let Poll::Ready(Ok(())) = result {
+            if buf.filled().len() == before && buf.remaining() > 0 {
+                if let Some(claim) = self.claim.take() {
+                    claim.finish(true);
+                }
+            }
+        }
+        result
+    }
 }
 
 fn percent_encode(s: &str) -> String {
