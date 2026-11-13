@@ -175,4 +175,5 @@
 - `docs/09_OPERATIONS.md`에 측정 결과·원인·선택지 기록. 클러스터·Cloudflare 설정 변경 없음(조회와 `/healthz`·`/cdn-cgi/trace` 요청만).
 - 원인: 한국에서 Cloudflare 미국 엣지(SEA/LAX)로 연결되어 사용자↔엣지 구간이 0.4~2초+. 게이트웨이+API는 약 20ms. 배포 중 "시간 초과"는 유실이 아니라 5초 넘는 지연.
 - 발견: 게이트웨이 인증서에 `note.studiobasa.com` 없음 → Cloudflare→원본 TLS 미검증.
+- 조치(2026-11-13): 공용 게이트웨이 인증서에 `note.studiobasa.com` 추가·재발급, 원본 직접 HTTPS 검증 통과(`ssl_verify_result=0`). Cloudflare SSL Full (strict) 전환은 사용자가 진행.
 
