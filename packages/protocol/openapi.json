@@ -234,6 +234,18 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "projects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "프로젝트를 아는 클라이언트는 1. 없으면 기본이 아닌 프로젝트의 메모를 묘비로 보냄(예전 클라이언트 보호)"
           }
         ]
       }
@@ -1794,6 +1806,208 @@
           }
         }
       }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "summary": "프로젝트 목록 (살아 있는 것만, ADR-0005). 메모 projectId=null은 기본 프로젝트",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          },
+          {
+            "integrationToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "summary": "프로젝트 만들기·이름 바꾸기 (ID는 클라이언트가 정함, 오프라인 생성)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          },
+          {
+            "integrationToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "빈 프로젝트 삭제 (메모가 있으면 409 project_not_empty, 묘비로 다른 기기에 전달)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          },
+          {
+            "integrationToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1894,7 +2108,8 @@
           "createdAt",
           "modifiedAt",
           "deleted",
-          "changeSeq"
+          "changeSeq",
+          "projectId"
         ],
         "properties": {
           "id": {
@@ -1938,6 +2153,14 @@
           },
           "changeSeq": {
             "type": "integer"
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "프로젝트 (null = 기본, ADR-0005)"
           }
         }
       },
@@ -1974,7 +2197,12 @@
               "link_invalid",
               "admin_only",
               "invalid_quota",
-              "account_not_found"
+              "account_not_found",
+              "invalid_project",
+              "invalid_project_name",
+              "project_name_taken",
+              "project_not_empty",
+              "project_not_found"
             ]
           },
           "message": {
@@ -2227,7 +2455,8 @@
         "required": [
           "notes",
           "cursor",
-          "hasMore"
+          "hasMore",
+          "projects"
         ],
         "properties": {
           "notes": {
@@ -2241,6 +2470,13 @@
           },
           "hasMore": {
             "type": "boolean"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "description": "projects=1일 때만 채움: 바뀐 프로젝트(묘비 포함)"
           }
         }
       },
@@ -2291,6 +2527,14 @@
           "modifiedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "값 = 그 프로젝트, null = 기본, 필드 없음 = 지금 프로젝트 유지"
           }
         }
       },
@@ -2629,6 +2873,52 @@
             ],
             "minimum": 1,
             "maximum": 1048576
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "createdAt",
+          "modifiedAt",
+          "deleted",
+          "changeSeq"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "폴더 한 칸 규칙(paths.json), / 와 @ 시작 금지"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "changeSeq": {
+            "type": "integer"
+          }
+        }
+      },
+      "PutProject": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
           }
         }
       }
