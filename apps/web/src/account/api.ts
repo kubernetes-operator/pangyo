@@ -195,7 +195,7 @@ export interface DownloadFile {
 
 /** 설치 파일: 목록 + 누를 때마다 짧게 유효한 일회성 주소 발급 (실제 저장 위치는 드러나지 않음) */
 export const downloadApi = {
-  list: () => request<{ version: string; files: DownloadFile[] }>('GET', '/downloads'),
+  list: () => request<{ version: string; build?: string; files: DownloadFile[] }>('GET', '/downloads'),
   link: (id: string) =>
     request<{ url: string; expiresAt: string }>('POST', `/downloads/${encodeURIComponent(id)}/link`),
 };

@@ -237,3 +237,9 @@
   - **새 메모 기본 제목**: `2026-11-13 1530 Memo` 형식(`:`는 파일 이름에 쓸 수 없어 시분을 붙여 씀).
 - 테스트: `make check` 통과(서버 통합 1개·Vitest 93(업데이트 후 재수신 1개)·Playwright 23(로컬 삭제·이동·기본 제목, 두 기기 기본 프로젝트 이름·삭제 전달)), OpenAPI 36, `make desktop-sync-check` 통과(8d 추가).
 
+## Unreleased — 앱 안 업데이트 A안: 새 버전 알림 + 받기 (`feature/in-app-update`)
+- 변경 파일: `apps/native/src-tauri/{src/lib.rs,src/remote.rs,Cargo.toml}`(`app_info`·`open_download` 명령, tauri-plugin-opener, `/downloads` 허용), `.github/workflows/package.yml`(`MEMONEST_BUILD`=커밋), `scripts/publish-downloads.sh`(manifest `build`), `crates/server/src/downloads.rs`(목록에 `build`), OpenAPI, `apps/web/src/ui/{app-update.ts(신규),app-update.test.ts(신규),app.ts,main.css}`, `apps/web/src/{storage/tauri.ts,account/{api.ts,device-panel.ts},settings.ts}`, `apps/web/index.html`, `Makefile`·`scripts/desktop_sync_check.py`(9번 항목), infra README.
+- 동작: 연결된 앱이 시작할 때·6시간마다 서버의 설치 파일 목록 `build`와 자기 빌드를 비교 → 다르면 상단 **새 버전 있음** → 확인 창 → 그 기기용 파일(Android APK, Windows exe, macOS dmg, Linux AppImage)의 일회용 주소를 받아 OS 브라우저/설치 화면으로 엶. 장비 연결 화면에 앱 버전과 **업데이트 확인**. 개발 빌드(build 없음)·예전 목록(build 없음)에서는 알리지 않음. 앱은 `<연결한 서버>/dl/<토큰>` 주소만 열 수 있음.
+- 테스트: Vitest 95(비교·파일 선택 2개 추가), `make desktop-sync-check` 9번(게시 빌드 ≠ 앱 빌드 → 표시) 포함 통과. 실제로 설치 파일을 여는 동작(브라우저·설치 화면)은 Xvfb에서 확인하지 않음 → 실기기 확인 필요.
+- 첫 적용: 이번 빌드가 build를 가진 첫 앱이라, **이번 설치 파일은 직접 한 번 더 설치**해야 하고 그다음 게시부터 앱 안에서 알림이 뜸.
+

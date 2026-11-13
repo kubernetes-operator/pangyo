@@ -39,6 +39,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     outcome_missing: '서버에도 없는 메모라 목록에서 뺐습니다.',
     outcome_offline: '서버에 연결할 수 없습니다. 연결되면 다시 시도하세요.',
     outcome_notSynced: '동기화가 켜져 있지 않습니다. 먼저 장비를 연결하세요.',
+    appVersion: '앱 버전',
+    checkUpdate: '업데이트 확인',
   },
   en: {
     title: 'Device link',
@@ -72,6 +74,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     outcome_missing: 'Not on the server either; removed from this list.',
     outcome_offline: 'Cannot reach the server. Try again when online.',
     outcome_notSynced: 'Sync is off. Link this device first.',
+    appVersion: 'App version',
+    checkUpdate: 'Check for updates',
   },
 };
 
@@ -88,6 +92,10 @@ export interface DeviceHooks {
   resolveDeletion: (item: ExternalDeletion, choice: DeletionChoice) => Promise<string>;
   /** 서버가 이 장비를 거부(401)했는지 */
   revoked: () => boolean;
+  /** 앱 버전 표시 (예: "0.1.0 (df68a25)") */
+  appVersion?: () => Promise<string>;
+  /** 업데이트 확인 → 결과 문구 (새 버전이면 상단 '새 버전 있음' 버튼도 켬) */
+  checkUpdate?: () => Promise<string>;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -207,6 +215,16 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
       await renderForm();
     };
     const deletions = el('ul', { className: 'device-list', id: 'external-deletions' });
+    const version = el('dd', { id: 'app-version' }, '…');
+    void hooks.appVersion?.().then((v) => (version.textContent = v));
+    const updateResult = el('small', { role: 'status', id: 'update-result' });
+    const updateBtn = el('button', { type: 'button', id: 'check-update' }, t('checkUpdate'));
+    updateBtn.onclick = async () => {
+      updateBtn.disabled = true;
+      updateResult.textContent = '…';
+      updateResult.textContent = (await hooks.checkUpdate?.().catch((e: unknown) => String(e))) ?? '';
+      updateBtn.disabled = false;
+    };
     frame(
       ...(hooks.revoked() ? [message(t('revoked'), 'error')] : []),
       el(
@@ -218,7 +236,10 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
         el('dd', {}, info.deviceName),
         el('dt', {}, t('since')),
         el('dd', {}, new Date(info.pairedAt).toLocaleString()),
+        el('dt', {}, t('appVersion')),
+        version,
       ),
+      ...(hooks.checkUpdate ? [el('div', { className: 'toolbar' }, updateBtn, updateResult)] : []),
       message(hooks.statusText()),
       el('h3', {}, t('deletions')),
       message(t('deletionsHelp')),

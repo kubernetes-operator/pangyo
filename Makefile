@@ -55,7 +55,7 @@ desktop-smoke: ## 데스크톱 앱 실행 확인 (Xvfb, 임시 폴더 사용)
 desktop-sync-check: ## 데스크톱 앱 ↔ 로컬 테스트 서버 동기화 실기 확인 (Linux, make db-test-up 필요)
 	npm run -s -w apps/web build >/dev/null
 	cargo build -q -p memonest-server
-	cargo build -q -p memonest-native --features custom-protocol,e2e
+	MEMONEST_BUILD=0000000check cargo build -q -p memonest-native --features custom-protocol,e2e # 앱 안 업데이트 확인용 빌드 표시
 	python3 scripts/desktop_sync_check.py
 
 bsd: ## BSD 콘솔 메모 앱 실행 (로컬 테스트)

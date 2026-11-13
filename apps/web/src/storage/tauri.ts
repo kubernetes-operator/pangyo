@@ -22,6 +22,9 @@ export const COMMANDS = {
   // 장비 등록·서버 연결 (토큰은 Rust에만 있음)
   deviceStatus: 'device_status',
   deviceHostname: 'device_hostname',
+  // 앱 안 업데이트 (A안)
+  appInfo: 'app_info',
+  openDownload: 'open_download',
   devicePair: 'device_pair',
   deviceUnpair: 'device_unpair',
   serverRequest: 'server_request',
@@ -63,6 +66,12 @@ export class DeviceError extends Error {
     super(message);
   }
 }
+
+/** 앱 버전·빌드, 받은 일회용 다운로드 주소 열기 (앱 안 업데이트 A안) */
+export const appApi = {
+  info: () => invoke<import('../ui/app-update').AppInfo>(COMMANDS.appInfo),
+  openDownload: (url: string) => invoke<void>(COMMANDS.openDownload, { url }),
+};
 
 export const deviceApi = {
   status: () => invoke<DeviceInfo | null>(COMMANDS.deviceStatus).catch(() => null),

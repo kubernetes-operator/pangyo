@@ -20,10 +20,11 @@ WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"; kubectl --context "${KUBE_CONTEXT}"
 echo "[1/4] 실행 ${RUN_ID}의 설치 파일 받기 (${REPO})"
 gh run download "${RUN_ID}" -R "${REPO}" -D "${WORK}/artifacts" -n memonest-windows -n memonest-macos -n memonest-linux -n memonest-android-debug
 mkdir -p "${WORK}/out/${VERSION}"
-python3 - "${WORK}/artifacts" "${WORK}/out" "${VERSION}" "${MAX_FILE_MB}" <<'PY'
+BUILD="$(gh run view "${RUN_ID}" -R "${REPO}" --json headSha -q .headSha)"   # 앱에 들어간 MEMONEST_BUILD와 같은 값
+python3 - "${WORK}/artifacts" "${WORK}/out" "${VERSION}" "${MAX_FILE_MB}" "${BUILD}" <<'PY'
 import hashlib, json, shutil, sys
 from pathlib import Path
-src, out, ver, max_mb = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+src, out, ver, max_mb, build = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], int(sys.argv[4]), sys.argv[5]
 rules = [  # (id, 플랫폼, 설명, 파일 패턴)
     ("windows-msi", "Windows", "설치 프로그램 (.msi)", "*.msi"),
     ("windows-exe", "Windows", "설치 프로그램 (.exe, 현재 사용자)", "*-setup.exe"),
@@ -46,7 +47,7 @@ for fid, platform, label, pattern in rules:
     files.append({"id": fid, "platform": platform, "label": label, "file": f"{ver}/{f.name}",
                   "size": dest.stat().st_size, "sha256": hashlib.sha256(dest.read_bytes()).hexdigest()})
     print(f"  {fid}: {f.name} ({dest.stat().st_size // 1024} KB)")
-json.dump({"version": ver, "files": files}, open(out / "manifest.json", "w"), ensure_ascii=False, indent=2)
+json.dump({"version": ver, "build": build, "files": files}, open(out / "manifest.json", "w"), ensure_ascii=False, indent=2)
 PY
 
 echo "[2/4] 업로드용 임시 Pod (PVC ${PVC} 쓰기 마운트)"
