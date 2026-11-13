@@ -98,6 +98,7 @@ pub mod android {
         JNIEnv, JavaVM,
     };
 
+    #[allow(unsafe_code)] // 워크스페이스에서 유일한 예외 (Cargo.toml [workspace.lints] 참고)
     fn with_env<T>(
         f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>,
     ) -> Result<T, String> {
