@@ -4,7 +4,7 @@
 //! - 웹 브라우저: HttpOnly 세션 쿠키 + 상태 변경 요청에 `X-MemoNest-Request: 1` 헤더 (CSRF 방지)
 //! - 데스크톱/모바일/n8n: 장비 등록으로 받은 `Authorization: Bearer <토큰>`
 use axum::{
-    extract::{FromRequestParts, Path, State},
+    extract::{FromRequestParts, Path, Query, State},
     http::{request::Parts, HeaderMap, Method, StatusCode},
     Json,
 };
@@ -91,6 +91,25 @@ pub struct PairingFinishRequest {
     code: String,
     device_name: String,
     platform: String,
+    /// 기기 고유값(앱에서 한 번 해시한 값). 같은 계정·같은 값이면 기존 장비 기록을 이어 씀. 없으면 새 장비
+    #[serde(default)]
+    device_key: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PairingStartQuery {
+    /// 이 장비로 다시 연결하는 코드 (웹 장비 목록에서 고름)
+    #[serde(default)]
+    device_id: Option<Uuid>,
+}
+
+/// 계정과 묶은 기기 고유값 해시 (원래 값은 저장하지 않음)
+fn device_key_hash(account: Uuid, key: &str) -> Option<String> {
+    let key = key.trim();
+    (8..=128)
+        .contains(&key.len())
+        .then(|| security::token_hash(&format!("{account}:{key}")))
 }
 
 #[derive(Serialize)]
@@ -480,6 +499,7 @@ pub async fn quota(
 pub async fn pairing_start(
     State(state): State<AppState>,
     current: CurrentAccount,
+    Query(q): Query<PairingStartQuery>,
 ) -> ApiResult<(StatusCode, Json<PairingStartResponse>)> {
     if !matches!(current.via, AuthVia::Session(_)) {
         return Err(ApiError::forbidden(
@@ -487,14 +507,26 @@ pub async fn pairing_start(
             "웹에서 로그인한 상태에서만 장비를 등록할 수 있습니다",
         ));
     }
+    if let Some(device) = q.device_id {
+        let mine: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM devices WHERE id = $1 AND account_id = $2")
+                .bind(device)
+                .bind(current.id)
+                .fetch_optional(state.db()?)
+                .await?;
+        if mine.is_none() {
+            return Err(ApiError::not_found());
+        }
+    }
     let code = security::new_pairing_code();
     let expires_at = Utc::now() + chrono::Duration::from_std(PAIRING_CODE_TTL).expect("짧은 기간");
     sqlx::query(
-        "INSERT INTO pairing_codes (code_hash, account_id, expires_at) VALUES ($1, $2, $3)",
+        "INSERT INTO pairing_codes (code_hash, account_id, expires_at, device_id) VALUES ($1, $2, $3, $4)",
     )
     .bind(security::token_hash(&code))
     .bind(current.id)
     .bind(expires_at)
+    .bind(q.device_id)
     .execute(state.db()?)
     .await?;
     Ok((
@@ -533,28 +565,79 @@ pub async fn pairing_finish(
     }
     let code = req.code.trim().to_uppercase();
     let mut tx = db.begin().await?;
-    let account: Option<(Uuid,)> = sqlx::query_as(
+    let account: Option<(Uuid, Option<Uuid>)> = sqlx::query_as(
         "UPDATE pairing_codes SET used_at = NOW()
-         WHERE code_hash = $1 AND used_at IS NULL AND expires_at > NOW() RETURNING account_id",
+         WHERE code_hash = $1 AND used_at IS NULL AND expires_at > NOW() RETURNING account_id, device_id",
     )
     .bind(security::token_hash(&code))
     .fetch_optional(&mut *tx)
     .await?;
-    let (account,) = account.ok_or_else(|| {
+    let (account, chosen) = account.ok_or_else(|| {
         ApiError::bad_request("invalid_code", "등록 코드가 올바르지 않거나 만료되었습니다")
     })?;
     let token = security::new_token();
-    let device_id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO devices (id, account_id, name, platform, token_hash) VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(device_id)
-    .bind(account)
-    .bind(&name)
-    .bind(&platform)
-    .bind(security::token_hash(&token))
-    .execute(&mut *tx)
-    .await?;
+    let key_hash = req
+        .device_key
+        .as_deref()
+        .and_then(|k| device_key_hash(account, k));
+    // 다시 등록: 웹에서 고른 장비, 아니면 같은 기기 고유값의 장비 → 그 기록을 이어 씀 (새 토큰, 폐기 해제)
+    let existing: Option<(Uuid,)> = match (chosen, &key_hash) {
+        (Some(id), _) => Some((id,)),
+        (None, Some(hash)) => {
+            sqlx::query_as("SELECT id FROM devices WHERE account_id = $1 AND device_key_hash = $2")
+                .bind(account)
+                .bind(hash)
+                .fetch_optional(&mut *tx)
+                .await?
+        }
+        (None, None) => None,
+    };
+    let device_id = match existing {
+        Some((id,)) => {
+            // 같은 기기 값이 다른 장비 기록에 있으면 비움 (고른 장비로 옮김)
+            if let Some(hash) = &key_hash {
+                sqlx::query(
+                    "UPDATE devices SET device_key_hash = NULL
+                     WHERE account_id = $1 AND device_key_hash = $2 AND id <> $3",
+                )
+                .bind(account)
+                .bind(hash)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            }
+            sqlx::query(
+                "UPDATE devices SET name = $3, platform = $4, token_hash = $5, revoked_at = NULL,
+                   device_key_hash = COALESCE($6, device_key_hash), last_seen_at = NOW()
+                 WHERE id = $1 AND account_id = $2",
+            )
+            .bind(id)
+            .bind(account)
+            .bind(&name)
+            .bind(&platform)
+            .bind(security::token_hash(&token))
+            .bind(&key_hash)
+            .execute(&mut *tx)
+            .await?;
+            id
+        }
+        None => {
+            let id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO devices (id, account_id, name, platform, token_hash, device_key_hash)
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(id)
+            .bind(account)
+            .bind(&name)
+            .bind(&platform)
+            .bind(security::token_hash(&token))
+            .bind(&key_hash)
+            .execute(&mut *tx)
+            .await?;
+            id
+        }
+    };
     tx.commit().await?;
     Ok((
         StatusCode::CREATED,

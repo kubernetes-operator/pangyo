@@ -195,3 +195,50 @@ test('관리자가 아니면 시스템 영역이 없음', async ({ page }) => {
   await expect(page.locator('#admin-default-quota')).toHaveCount(0);
 });
 
+test('장비 목록에서 장비를 골라 다시 연결 코드 → 그 장비 기록으로 연결, 폐기한 장비 기록 지우기', async ({ page }) => {
+  const email = `e2e-device-${Date.now()}@example.com`;
+  await page.goto('/');
+  const ids = await page.evaluate(
+    async ([email, password]) => {
+      const call = (method: string, path: string, body?: unknown) =>
+        fetch(path, {
+          method,
+          headers: { 'Content-Type': 'application/json', 'X-MemoNest-Request': '1' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        }).then((r) => r.json().catch(() => null));
+      await call('POST', '/api/v1/auth/register', { email, password });
+      const { code } = await call('POST', '/api/v1/pairing/start');
+      const first = await call('POST', '/api/v1/pairing/finish', { code, deviceName: '내 휴대폰', platform: 'android' });
+      return { device: first.deviceId as string };
+    },
+    [email, PASSWORD],
+  );
+  await page.reload();
+  await page.locator('#account-btn').click();
+  const dialog = page.locator('#account-dialog');
+  const row = dialog.locator(`#device-list li[data-device-id="${ids.device}"]`);
+  await row.locator('button.reconnect').click();
+  await expect(dialog.locator('#pairing-for')).toContainText('"내 휴대폰" 장비 다시 연결');
+  const code = await dialog.locator('#pairing-code-value').textContent();
+  const again = await page.evaluate(
+    async (code) =>
+      (
+        await fetch('/api/v1/pairing/finish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-MemoNest-Request': '1' },
+          body: JSON.stringify({ code, deviceName: '내 휴대폰(다시)', platform: 'android' }),
+        })
+      ).json(),
+    code,
+  );
+  expect(again.deviceId).toBe(ids.device);
+
+  // 폐기 → 기록 지우기 → 목록에서 사라짐
+  await page.reload();
+  await page.locator('#account-btn').click();
+  await row.locator('button:not(.reconnect)').click();
+  await expect(row).toContainText('해제됨');
+  await row.locator('button.forget').click();
+  await expect(row).toHaveCount(0);
+});
+

@@ -2624,10 +2624,13 @@ dependencies = [
 name = "memonest-native"
 version = "0.1.0"
 dependencies = [
+ "jni",
  "keyring",
  "memonest-core",
+ "ndk-context",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",

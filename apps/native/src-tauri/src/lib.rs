@@ -17,6 +17,7 @@ const WEBVIEW_CONSOLE_ENV: &str = "MEMONEST_WEBVIEW_CONSOLE";
 #[cfg(feature = "e2e")]
 const E2E_SCRIPT_ENV: &str = "MEMONEST_E2E_SCRIPT";
 
+mod platform;
 mod remote;
 
 use std::{
@@ -170,6 +171,67 @@ async fn open_download(
         .map_err(|e| e.to_string())
 }
 
+/// Windows 앱 안 업데이트 (2026-11-13 사용 의견: 버튼 한 번으로): 서버의 일회용 주소에서 설치 파일을 받아
+/// 게시 목록의 sha256과 맞는지 확인한 뒤, 조용히(/S) 설치하고 앱을 다시 실행. 다른 OS는 지원하지 않음(화면이 받기로 대신)
+#[tauri::command]
+async fn install_update(
+    app: tauri::AppHandle,
+    remote: State<'_, RemoteState>,
+    url: String,
+    sha256: String,
+) -> CommandResult<()> {
+    let info = blocking(&remote, |r| Ok(r.status())).await?;
+    let base = info.map(|i| i.server_url).ok_or("not_paired")?;
+    if !url.starts_with(&format!("{base}/dl/")) {
+        return Err("허용되지 않은 다운로드 주소".into());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, sha256);
+        Err("unsupported".into())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use sha2::{Digest, Sha256};
+        const MAX_BYTES: u64 = 300 * 1024 * 1024;
+        let data = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+            let mut response = ureq::get(&url)
+                .call()
+                .map_err(|e| format!("offline: {e}"))?;
+            response
+                .body_mut()
+                .with_config()
+                .limit(MAX_BYTES)
+                .read_to_vec()
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let actual: String = Sha256::digest(&data)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        if !actual.eq_ignore_ascii_case(sha256.trim()) {
+            return Err("받은 설치 파일이 게시된 파일과 다릅니다 (sha256 불일치)".into());
+        }
+        let installer = std::env::temp_dir().join("MemoNest-update-setup.exe");
+        std::fs::write(&installer, &data).map_err(|e| e.to_string())?;
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        // 설치가 끝나면 다시 실행. 앱은 바로 닫아 설치 프로그램이 파일을 바꿀 수 있게
+        let script = format!(
+            "start \"\" /wait \"{}\" /S & start \"\" \"{}\"",
+            installer.display(),
+            exe.display()
+        );
+        std::process::Command::new("cmd")
+            .args(["/C", &script])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        app.exit(0);
+        Ok(())
+    }
+}
+
 /// 내보낸 파일(프로젝트 전체 다운로드 .zip)을 OS 다운로드 폴더에 저장. 같은 이름이 있으면 " (2)"를 붙임.
 /// 이름은 파일 이름만(경로 없이) 받으며, 저장한 전체 경로를 돌려줌
 #[tauri::command]
@@ -180,6 +242,13 @@ fn save_download(app: tauri::AppHandle, file_name: String, data: Vec<u8>) -> Com
             .next()
             .unwrap_or("MemoNest.zip"),
     );
+    // Android: 앱 전용 폴더는 사용자가 볼 수 없음 → 공용 '다운로드/MemoNest' (2026-11-13 사용자 확인)
+    #[cfg(target_os = "android")]
+    {
+        let _ = &app;
+        return platform::android::save_to_downloads(&name, "application/zip", &data);
+    }
+    #[allow(unreachable_code)]
     let (stem, ext) = name.rsplit_once('.').unwrap_or((name.as_str(), "zip"));
     let dir = app.path().download_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -196,14 +265,10 @@ fn save_download(app: tauri::AppHandle, file_name: String, data: Vec<u8>) -> Com
 
 /// 장비 등록 화면의 기본 장비 이름에 쓸 호스트 이름 (2026-11-13 사용 의견: 내 기기 이름이 먼저 보이게).
 /// 알 수 없거나 의미 없는 값(localhost 등, Android에서 흔함)이면 None → 화면이 기기 모델/OS로 대신 채움
+/// Android는 설정의 '기기 이름'(없으면 제조사·모델), 데스크톱은 호스트 이름 (2026-11-13 사용자 확인: Android에서 비어 있었음)
 #[tauri::command]
 fn device_hostname() -> Option<String> {
-    let name = whoami::fallible::hostname().unwrap_or_default();
-    let name = name.trim();
-    let useless = name.is_empty()
-        || name.eq_ignore_ascii_case("localhost")
-        || name.eq_ignore_ascii_case("unknown");
-    (!useless).then(|| name.chars().take(60).collect())
+    platform::device_name()
 }
 
 #[tauri::command]
@@ -220,7 +285,14 @@ async fn device_pair(
     now: String,
 ) -> CommandResult<DeviceInfo> {
     blocking(&remote, move |r| {
-        r.pair(&server_url, &code, &device_name, std::env::consts::OS, now)
+        r.pair(
+            &server_url,
+            &code,
+            &device_name,
+            std::env::consts::OS,
+            platform::device_key(),
+            now,
+        )
     })
     .await
 }
@@ -307,6 +379,7 @@ pub fn run() {
             app_info,
             open_download,
             save_download,
+            install_update,
             device_pair,
             device_unpair,
             server_request

@@ -115,6 +115,16 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/CsrfHeader"
+          },
+          {
+            "name": "deviceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "이 장비로 다시 연결하는 코드 (연결하면 그 장비 기록을 이어 씀)"
           }
         ]
       }
@@ -2713,6 +2723,10 @@
               "freebsd",
               "n8n"
             ]
+          },
+          "deviceKey": {
+            "type": "string",
+            "description": "기기 고유값(앱에서 한 번 해시). 같은 계정·같은 값이면 기존 장비 기록을 이어 씀"
           }
         }
       },

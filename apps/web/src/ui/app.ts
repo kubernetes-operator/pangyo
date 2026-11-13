@@ -766,6 +766,13 @@ async function installAppUpdate(): Promise<void> {
   try {
     const { appApi } = await import('../storage/tauri');
     const link = await downloadApi.link(update.file.id);
+    if (update.info.platform === 'windows') {
+      // Windows: 앱이 받아서 검증 후 바로 설치하고 다시 열림
+      $('project-status').textContent = w.updateInstalling;
+      await appApi.installUpdate(server + link.url, update.file.sha256);
+      return;
+    }
+    // Android 등: 내려받기 → OS 설치 화면 (마지막 '설치'는 OS 정책상 사용자가 누름)
     await appApi.openDownload(server + link.url);
     $('project-status').textContent = w.updateOpened;
   } catch (e) {

@@ -145,7 +145,9 @@ export const accountApi = {
   },
   /** 계정 설정 (기본 프로젝트 표시 이름 등) */
   update: (patch: { defaultProjectName?: string }) => request<Account>('PATCH', '/account', patch),
-  pairingStart: () => request<PairingStart>('POST', '/pairing/start'),
+  /** deviceId: 그 장비로 다시 연결하는 코드 (연결하면 그 장비 기록을 이어 씀) */
+  pairingStart: (deviceId?: string) =>
+    request<PairingStart>('POST', `/pairing/start${deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''}`),
   devices: () => request<Device[]>('GET', '/devices'),
   revokeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),
   /** 폐기한 장비의 기록 지우기 */

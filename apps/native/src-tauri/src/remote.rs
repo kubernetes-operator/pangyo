@@ -98,12 +98,15 @@ impl Remote {
         code: &str,
         device_name: &str,
         platform: &str,
+        device_key: Option<String>,
         now: String,
     ) -> RemoteResult<DeviceInfo> {
         let base = normalize_server_url(server_url)?;
         // 등록 코드는 한 번만 쓸 수 있으므로, 서버에 보내기 전에 토큰을 저장할 수 있는지 먼저 확인
         token::check(&self.data_dir)?;
-        let body = serde_json::json!({ "code": code.trim(), "deviceName": device_name.trim(), "platform": platform });
+        // deviceKey: 다시 설치해도 같은 장비 기록을 이어 쓰도록 (앱에서 해시한 값만)
+        let body = serde_json::json!({ "code": code.trim(), "deviceName": device_name.trim(), "platform": platform,
+                                       "deviceKey": device_key });
         let response = self.send(
             "POST",
             &format!("{base}{API_PREFIX}/pairing/finish"),
