@@ -88,6 +88,9 @@ pub struct ChangesResponse {
     notes: Vec<NoteView>,
     /// `projects=1`일 때만: 바뀐 프로젝트(묘비 포함)
     projects: Vec<ProjectView>,
+    /// `projects=1`일 때만: 기본 프로젝트 표시 이름 ('' = 화면 기본값). 바뀌었는지와 관계없이 매번 보냄
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_project_name: Option<String>,
     /// 다음 요청의 `since`
     cursor: i64,
     has_more: bool,
@@ -328,9 +331,20 @@ pub async fn changes(
     if !aware {
         notes = notes.into_iter().map(NoteView::hidden_for_legacy).collect();
     }
+    let default_project_name = if aware {
+        let (name,): (String,) =
+            sqlx::query_as("SELECT default_project_name FROM accounts WHERE id = $1")
+                .bind(current.id)
+                .fetch_one(db)
+                .await?;
+        Some(name)
+    } else {
+        None
+    };
     Ok(Json(ChangesResponse {
         notes,
         projects,
+        default_project_name,
         cursor,
         has_more,
     }))

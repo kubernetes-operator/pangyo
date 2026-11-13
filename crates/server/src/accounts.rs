@@ -56,6 +56,8 @@ pub struct AccountView {
     quota_bytes: i64,
     used_bytes: i64,
     created_at: DateTime<Utc>,
+    /// 기본 프로젝트 표시 이름 ('' = 화면 기본값, ADR-0005)
+    default_project_name: String,
     /// 관리자 화면(저장공간 설정)을 보여 줄지. ADMIN_EMAILS 기준
     #[sqlx(skip)]
     is_admin: bool,
@@ -328,7 +330,7 @@ pub async fn register(
     let inserted: Result<AccountView, sqlx::Error> = sqlx::query_as(
         "INSERT INTO accounts (id, tier, quota_bytes, email, display_name, password_hash, auth_provider)
          VALUES ($1, 'free', $2, $3, $4, $5, 'local')
-         RETURNING id, email, display_name, auth_provider, tier, quota_bytes, used_bytes, created_at",
+         RETURNING id, email, display_name, auth_provider, tier, quota_bytes, used_bytes, created_at, default_project_name",
     )
     .bind(Uuid::new_v4())
     .bind(crate::admin::default_quota_bytes(&mut *tx, &state.config).await?)
@@ -421,6 +423,41 @@ pub async fn me(
     current.require(Scope::Account)?;
     Ok(Json(
         load_account(state.db()?, current.id)
+            .await?
+            .with_admin(&state.config),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUpdate {
+    /// 기본 프로젝트 표시 이름 ('' = 화면 기본값)
+    default_project_name: Option<String>,
+}
+
+/// 계정 설정 바꾸기 (지금은 기본 프로젝트 표시 이름만). 장비(앱)에서도 가능
+pub async fn update_me(
+    State(state): State<AppState>,
+    current: CurrentAccount,
+    ApiJson(req): ApiJson<AccountUpdate>,
+) -> ApiResult<Json<AccountView>> {
+    current.require(Scope::Account)?;
+    let db = state.db()?;
+    if let Some(raw) = req.default_project_name {
+        let name = if raw.trim().is_empty() {
+            String::new()
+        } else {
+            crate::projects::project_name(&raw)?
+        };
+        // 다른 기기는 변경 목록(`projects=1`) 응답의 defaultProjectName으로 받음
+        sqlx::query("UPDATE accounts SET default_project_name = $2 WHERE id = $1")
+            .bind(current.id)
+            .bind(&name)
+            .execute(db)
+            .await?;
+    }
+    Ok(Json(
+        load_account(db, current.id)
             .await?
             .with_admin(&state.config),
     ))
@@ -563,7 +600,8 @@ pub async fn revoke_device(
 
 async fn load_account(db: &PgPool, id: Uuid) -> ApiResult<AccountView> {
     sqlx::query_as(
-        "SELECT id, email, display_name, auth_provider, tier, quota_bytes, used_bytes, created_at
+        "SELECT id, email, display_name, auth_provider, tier, quota_bytes, used_bytes, created_at,
+           default_project_name
          FROM accounts WHERE id = $1",
     )
     .bind(id)

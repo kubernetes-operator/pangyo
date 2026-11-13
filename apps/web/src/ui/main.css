@@ -76,3 +76,4 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 .project-row button{font-size:12px}
 #project-status{flex-basis:100%;margin:0;color:#a00}
 #project-status:empty{display:none}
+.account-dialog button.danger,.name-dialog button.danger{background:#a00;border-color:#a00;color:#fff}

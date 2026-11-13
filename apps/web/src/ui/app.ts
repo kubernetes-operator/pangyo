@@ -10,7 +10,7 @@ import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type
 import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
-import { askName } from './name-dialog';
+import { askConfirm, askName } from './name-dialog';
 import {
   CURRENT_PROJECT_META_KEY,
   DEFAULT_PROJECT,
@@ -68,7 +68,10 @@ const state = {
   // 프로젝트 (ADR-0005). 데스크톱·모바일 앱은 파일 배치(3단계) 전까지 기본 프로젝트만
   projects: [] as LocalProject[],
   project: DEFAULT_PROJECT,
+  /** 기본 프로젝트 표시 이름 (서버 계정 설정, '' = "기본") */
+  defaultProjectName: '',
 };
+const DEFAULT_PROJECT_NAME_META_KEY = 'defaultProjectName';
 /** 프로젝트 화면 사용 여부 (ADR-0005: 웹·데스크톱·모바일 모두. 데스크톱은 `@프로젝트` 폴더) */
 const projectsEnabled = () => true;
 
@@ -237,11 +240,14 @@ function renderEditor(): void {
     $<HTMLInputElement>('title').value = '';
     editor().value = '';
     $('save-status').textContent = 'NO NOTE';
+    renderNoteProject();
+    renderNoteFolder();
     return;
   }
   $<HTMLInputElement>('title').value = note.title;
   editor().value = note.content;
   renderNoteProject();
+  renderNoteFolder();
   $<HTMLSelectElement>('format').value = note.format;
   $('format-label').textContent = '.' + note.format;
   $('created-at').textContent = new Date(note.createdAt).toLocaleString();
@@ -351,6 +357,12 @@ function syncStore(): SyncStore {
             changed: () => {
               renderProjects();
               displayTree();
+            },
+            setDefaultName: async (name: string) => {
+              if (name === state.defaultProjectName) return;
+              state.defaultProjectName = name;
+              await repo.setMeta(DEFAULT_PROJECT_NAME_META_KEY, name);
+              renderProjects();
             },
           },
         }
@@ -764,7 +776,15 @@ async function selectNote(id: string): Promise<void> {
 // === 프로젝트 (ADR-0005) ===
 const liveProjects = () => state.projects.filter((p) => !p.sync.deleting);
 const projectName = (id: string) =>
-  id ? (state.projects.find((p) => p.id === id)?.name ?? '?') : WORDS[state.locale].defaultProject;
+  id
+    ? (state.projects.find((p) => p.id === id)?.name ?? '?')
+    : state.defaultProjectName || WORDS[state.locale].defaultProject;
+/** 목록 표시: 서버에 아직 못 올린 프로젝트는 ↑, 서버가 거절한 프로젝트는 ⚠ */
+const projectLabel = (id: string) => {
+  const p = state.projects.find((x) => x.id === id);
+  const mark = p?.sync.error ? ' ⚠' : p && p.sync.dirty && state.sync ? ' ↑' : '';
+  return projectName(id) + mark;
+};
 
 async function saveProjects(): Promise<void> {
   await repo.setMeta(PROJECTS_META_KEY, state.projects);
@@ -776,7 +796,7 @@ function projectOptions(select: HTMLSelectElement, current: string): void {
     ...options.map((id) => {
       const o = document.createElement('option');
       o.value = id;
-      o.textContent = projectName(id);
+      o.textContent = projectLabel(id);
       o.selected = id === current;
       return o;
     }),
@@ -787,7 +807,6 @@ function renderProjects(): void {
   if (!projectsEnabled()) return;
   projectOptions($<HTMLSelectElement>('project-select'), state.project);
   const isDefault = state.project === DEFAULT_PROJECT;
-  $<HTMLButtonElement>('rename-project').disabled = isDefault;
   $<HTMLButtonElement>('delete-project').disabled = isDefault;
   const error = state.projects.find((p) => p.id === state.project)?.sync.error;
   $('project-status').textContent = error ?? '';
@@ -911,6 +930,116 @@ const projectNameValidator = (selfId?: string) => (v: string) => {
   }
 };
 
+/** 새 메모 기본 제목: "2026-11-13 1530 Memo" (':'는 파일 이름에 쓸 수 없어 시분을 붙여 씀) */
+function defaultMemoTitle(now = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const date = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  return `${date} ${p(now.getHours())}${p(now.getMinutes())} ${WORDS[state.locale].memo}`;
+}
+
+/** 지금 프로젝트의 폴더 목록 (빈 폴더 포함, 루트 '' 먼저) */
+function projectFolderPaths(): string[] {
+  const own = state.folders.map((x) => parseFolderKey(x.path)).filter((f) => f.project === state.project);
+  const fromNotes = state.notes.filter((n) => inProject(n, state.project)).flatMap((n) => folderAncestors(n.folder));
+  return ['', ...[...new Set([...own.map((f) => f.path), ...fromNotes])].filter(Boolean).sort()];
+}
+
+function renderNoteFolder(): void {
+  const select = $<HTMLSelectElement>('note-folder');
+  const del = $<HTMLButtonElement>('delete-note');
+  const note = state.note;
+  const locked = !note || state.lease?.kind === 'denied';
+  select.disabled = locked;
+  del.disabled = locked;
+  if (!note) return select.replaceChildren();
+  select.replaceChildren(
+    ...projectFolderPaths().map((path) => {
+      const o = document.createElement('option');
+      o.value = path;
+      o.textContent = WORDS[state.locale].moveFolder + '/' + path;
+      o.selected = path === note.folder;
+      return o;
+    }),
+  );
+}
+
+/** 메모를 같은 프로젝트의 다른 폴더로 (같은 이름이 있으면 거절) */
+async function moveNoteToFolder(target: string): Promise<void> {
+  const note = state.note;
+  if (!note || note.folder === target) return;
+  const clash = state.notes.some(
+    (n) =>
+      n.id !== note.id &&
+      inProject(n, projectOf(note)) &&
+      n.folder === target &&
+      n.title === note.title &&
+      n.format === note.format,
+  );
+  if (clash) {
+    $('project-status').textContent = WORDS[state.locale].moveConflict;
+    renderNoteFolder();
+    return;
+  }
+  note.folder = target;
+  note.modifiedAt = nowISO();
+  state.sync?.markDirty(note);
+  await repo.saveNote(note);
+  state.selectedFolder = target;
+  $('folder-path').textContent = '/' + target;
+  displayTree();
+  renderNoteFolder();
+}
+
+/** 메모 삭제: 서버에 올라간 메모는 서버에서도 지움(임대 필요, 다른 기기가 고쳤으면 지우지 않음) */
+async function deleteCurrentNote(): Promise<void> {
+  const note = state.note;
+  if (!note) return;
+  const w = WORDS[state.locale];
+  const ok = await askConfirm({
+    message: w.deleteNoteConfirm.replace('{title}', `${note.title}.${note.format}`),
+    ok: w.deleteNoteOk,
+    cancel: w.cancel,
+    danger: true,
+  });
+  if (!ok || state.note !== note) return;
+  const synced = (note.sync?.version ?? 0) > 0;
+  if (synced) {
+    if (!state.sync) {
+      $('project-status').textContent = w.deleteOffline;
+      return;
+    }
+    let result: string;
+    try {
+      result = await state.sync.deleteRemote(note.id, note.sync!.version);
+    } catch {
+      $('project-status').textContent = w.deleteOffline;
+      return;
+    }
+    if (result === 'busy' || result === 'changed') {
+      $('project-status').textContent = result === 'busy' ? w.deleteBusy : w.deleteChanged;
+      void state.sync.syncOnce();
+      return;
+    }
+  }
+  releaseEdit();
+  endSession();
+  await flushSave();
+  state.unsaved.delete(note.id);
+  state.notes = state.notes.filter((n) => n.id !== note.id);
+  await repo.deleteNote(note.id);
+  state.selectedId = null;
+  state.note = null;
+  state.lease = null;
+  const next = state.notes
+    .filter((n) => inProject(n, state.project))
+    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))[0];
+  if (next) await selectNote(next.id);
+  else {
+    renderEditor();
+    displayTree();
+  }
+}
+
 async function addNote(title: string, content = '', format: NoteFormat = 'md'): Promise<void> {
   const sanitized = safeFilename(title);
   const exists = state.notes.some(
@@ -1001,7 +1130,7 @@ function bindEvents(): void {
     const value = await askName({
       label: w().newNoteTitle,
       hint: state.selectedFolder ? `${w().saveIn}: /${state.selectedFolder}` : undefined,
-      initial: 'Untitled',
+      initial: defaultMemoTitle(),
       ok: w().ok,
       cancel: w().cancel,
     });
@@ -1040,7 +1169,28 @@ function bindEvents(): void {
   };
   $('rename-project').onclick = async () => {
     const id = state.project;
-    if (!id) return;
+    if (!id) {
+      // 기본 프로젝트: 행이 없으므로 계정 설정의 표시 이름만 바꿈 (모든 기기, 서버 필요)
+      const value = await askName({
+        label: w().renameProjectTo,
+        initial: projectName(''),
+        hint: w().renameDefaultHint,
+        ok: w().rename,
+        cancel: w().cancel,
+        validate: (v) => (v === w().defaultProject ? null : projectNameValidator('')(v)),
+      });
+      if (value === null) return;
+      const name = value === w().defaultProject ? '' : normalizeProjectName(value, state.projects, '');
+      try {
+        const account = await accountApi.update({ defaultProjectName: name });
+        state.defaultProjectName = account.defaultProjectName ?? name;
+        await repo.setMeta(DEFAULT_PROJECT_NAME_META_KEY, state.defaultProjectName);
+        renderProjects();
+      } catch {
+        $('project-status').textContent = w().needServer;
+      }
+      return;
+    }
     const value = await askName({
       label: w().renameProjectTo,
       initial: projectName(id),
@@ -1053,6 +1203,9 @@ function bindEvents(): void {
   $('delete-project').onclick = () => void deleteProject(state.project);
   $<HTMLSelectElement>('note-project').onchange = (e) =>
     void moveNoteToProject((e.target as HTMLSelectElement).value);
+  $<HTMLSelectElement>('note-folder').onchange = (e) =>
+    void moveNoteToFolder((e.target as HTMLSelectElement).value);
+  $('delete-note').onclick = () => void deleteCurrentNote();
   // 제목에서 Enter → 본문으로 이동 (한글 조합 중 Enter는 제외)
   $<HTMLInputElement>('title').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing) return;
@@ -1154,6 +1307,7 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   state.folders = await repo.listFolders();
   if (projectsEnabled()) {
     state.projects = (await repo.getMeta<LocalProject[]>(PROJECTS_META_KEY)) ?? [];
+    state.defaultProjectName = (await repo.getMeta<string>(DEFAULT_PROJECT_NAME_META_KEY)) ?? '';
     const current = (await repo.getMeta<string>(CURRENT_PROJECT_META_KEY)) ?? DEFAULT_PROJECT;
     state.project = state.projects.some((p) => p.id === current && !p.sync.deleting) ? current : DEFAULT_PROJECT;
     $('project-row').hidden = false;

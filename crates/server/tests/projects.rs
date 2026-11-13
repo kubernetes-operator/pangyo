@@ -248,3 +248,55 @@ async fn change_feed_with_projects_and_legacy_clients() {
     }
     assert_eq!((seen_projects, seen_notes), (1, 2));
 }
+
+#[tokio::test]
+async fn default_project_display_name() {
+    let Some(app) = app().await else { return };
+    let c = app
+        .register("default-name@example.com")
+        .await
+        .cookie
+        .unwrap();
+    assert_eq!(
+        changes(&app, &c, "since=0&projects=1").await["defaultProjectName"],
+        ""
+    );
+    let r = app
+        .call(
+            Method::PATCH,
+            "/api/v1/account",
+            Some(json!({ "defaultProjectName": " 일상 " })),
+            Auth::Cookie(&c),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.json);
+    assert_eq!(r.json["defaultProjectName"], "일상");
+    // 다른 기기는 변경 목록에서 받음 (바뀐 메모가 없어도 매번)
+    let feed = changes(&app, &c, "since=999999&projects=1").await;
+    assert_eq!(feed["defaultProjectName"], "일상");
+    assert!(
+        changes(&app, &c, "since=0")
+            .await
+            .get("defaultProjectName")
+            .is_none(),
+        "예전 클라이언트에는 없음"
+    );
+    let bad = app
+        .call(
+            Method::PATCH,
+            "/api/v1/account",
+            Some(json!({ "defaultProjectName": "@x" })),
+            Auth::Cookie(&c),
+        )
+        .await;
+    assert_eq!(bad.json["error"], "invalid_project_name");
+    let reset = app
+        .call(
+            Method::PATCH,
+            "/api/v1/account",
+            Some(json!({ "defaultProjectName": "" })),
+            Auth::Cookie(&c),
+        )
+        .await;
+    assert_eq!(reset.json["defaultProjectName"], "");
+}

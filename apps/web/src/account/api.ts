@@ -19,6 +19,8 @@ export interface Account {
   createdAt: string;
   /** 관리자 화면(시스템) 표시 여부 */
   isAdmin?: boolean;
+  /** 기본 프로젝트 표시 이름 ('' = 화면 기본값) */
+  defaultProjectName?: string;
 }
 export interface Providers {
   local: boolean;
@@ -141,6 +143,8 @@ export const accountApi = {
       throw e;
     }
   },
+  /** 계정 설정 (기본 프로젝트 표시 이름 등) */
+  update: (patch: { defaultProjectName?: string }) => request<Account>('PATCH', '/account', patch),
   pairingStart: () => request<PairingStart>('POST', '/pairing/start'),
   devices: () => request<Device[]>('GET', '/devices'),
   revokeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),

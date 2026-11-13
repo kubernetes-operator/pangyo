@@ -218,6 +218,11 @@ def main() -> int:
         results.append(wait("8c. 웹에서 프로젝트 이름 바꾸기 → 데스크톱 폴더 @제주 여행",
                             lambda: trip_note("제주 여행").is_file() and not (notes / "@여행").exists()))
 
+        def app_project():
+            status, projects = api.call("GET", "/projects")
+            return status == 200 and any(p["name"] == "앱 프로젝트" for p in projects)
+        results.append(wait("8d. 앱 화면에서 만든 프로젝트 → 서버(웹)", app_project))
+
         # 장비 토큰 = base64url 43자. 앱 데이터 폴더의 어떤 파일에도 그 모양의 값이 없어야 함
         device_json = json.loads((data_dir / "device.json").read_text(encoding="utf-8"))
         token_like = re.compile(rb"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])")
@@ -298,6 +303,11 @@ E2E_JS = r"""
   const result = await waitFor('#external-deletion-result');
   console.log('[e2e] deletion: ' + result.textContent);
   document.querySelector('#account-close').click();
+  // 앱 화면에서 프로젝트 만들기 → 서버(웹)에 보여야 함 (2026-11-13 사용자 확인: 웹에 안 보임)
+  document.querySelector('#add-project').click();
+  fill('#name-input', '앱 프로젝트');
+  document.querySelector('#name-dialog form').requestSubmit();
+  console.log('[e2e] project created');
   for (;;) {
     if ((document.querySelector('#sync-status')?.textContent ?? '').includes('연결 해제됨')) break;
     await sleep(300);

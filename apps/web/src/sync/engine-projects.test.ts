@@ -218,3 +218,33 @@ describe('프로젝트 동기화 (ADR-0005)', () => {
     expect([...server.notes.values()].find((x) => x.title === '기본 메모')!.content).toBe('고침');
   });
 });
+
+describe('예전 버전에서 업데이트 (2026-11-13 사용자 확인)', () => {
+  it('프로젝트를 모르던 기기가 업데이트되면 한 번 처음부터 다시 받아, 건너뛴 프로젝트와 메모를 되찾음', async () => {
+    const server = new ProjectServer();
+    const web = await device(server);
+    const work = project('업무');
+    web.store.projectList.push(work);
+    web.store.notes.push(note('업무 메모', work.id));
+    await web.engine.adoptLocalNotes();
+    await web.engine.syncOnce();
+
+    // 예전 앱: 프로젝트를 모름 → 업무 메모는 묘비로 받아 건너뜀, 커서는 끝까지
+    const legacy = await device(server, false);
+    await legacy.engine.syncOnce();
+    expect(legacy.store.notes).toEqual([]);
+    const cursor = legacy.store.meta.get('syncCursor');
+    expect(cursor).toBeGreaterThan(0);
+
+    // 같은 기기가 업데이트됨 (같은 저장소, 프로젝트를 아는 엔진)
+    const updated = new Device(true);
+    updated.meta = legacy.store.meta;
+    const engine = new SyncEngine(server.api(), updated, { clientId: 'updated', label: 'test' });
+    engines.push(engine);
+    await engine.init();
+    await engine.syncOnce();
+    expect(updated.projectList.map((p) => p.name)).toEqual(['업무']);
+    expect(updated.notes.map((n) => [n.title, n.projectId])).toEqual([['업무 메모', work.id]]);
+    expect(updated.meta.get('syncProjectsAware')).toBe(true);
+  });
+});

@@ -213,7 +213,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(accounts::register))
         .route("/api/v1/auth/login", post(accounts::login))
         .route("/api/v1/auth/logout", post(accounts::logout))
-        .route("/api/v1/account", get(accounts::me))
+        .route(
+            "/api/v1/account",
+            get(accounts::me).patch(accounts::update_me),
+        )
         .route("/api/v1/account/quota", get(accounts::quota))
         .route("/api/v1/pairing/start", post(accounts::pairing_start))
         .route("/api/v1/pairing/finish", post(accounts::pairing_finish))

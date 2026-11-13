@@ -186,6 +186,35 @@ test('프로젝트(ADR-0005): 만들기·전환하면 폴더와 메모가 따로
   await expect(page.locator('#tree')).toContainText('기본 메모');
 });
 
+test('사용 의견(2026-11-13 2차): 새 메모 기본 제목은 일시 Memo, 폴더 이동, 메모 삭제(확인 창)', async ({ page }) => {
+  await page.goto('/');
+  await enterName(page, '#add-folder', '보관');
+  await page.locator('#tree button', { hasText: '▸ /' }).click();
+  await page.locator('#add-note').click();
+  await expect(page.locator('#name-input')).toHaveValue(/^\d{4}-\d{2}-\d{2} \d{4} Memo$/);
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#title')).toHaveValue(/ Memo$/);
+
+  // 폴더 이동
+  await createNote(page, '옮길 메모');
+  await page.locator('#note-folder').selectOption({ label: '폴더 이동: /보관' });
+  await expect(page.locator('#folder-path')).toHaveText('/보관');
+  const selected = page.locator('#tree button[aria-selected="true"]');
+  await expect(selected).toHaveText(['▸ 보관', '· 옮길 메모.md']);
+
+  // 삭제: 취소하면 그대로, 확인하면 지워짐 (새로고침 후에도)
+  await page.locator('#delete-note').click();
+  await expect(page.locator('#confirm-cancel')).toBeFocused();
+  await page.locator('#confirm-cancel').click();
+  await expect(page.locator('#tree')).toContainText('옮길 메모');
+  await page.locator('#delete-note').click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#tree')).not.toContainText('옮길 메모');
+  await expect(page.locator('#count')).toHaveText('1 notes');
+  await page.reload();
+  await expect(page.locator('#tree')).not.toContainText('옮길 메모');
+});
+
 test('T-03 MD/TXT 다운로드 내용이 UTF-8로 동일', async ({ page }) => {
   await page.goto('/');
   await createNote(page, '내보내기');
