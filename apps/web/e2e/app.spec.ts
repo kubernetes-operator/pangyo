@@ -25,6 +25,12 @@ async function createNote(page: Page, title: string): Promise<void> {
   await expect(page.locator('#title')).toHaveValue(title);
 }
 
+/** 본문 아래 '더보기'(프로젝트 이동·폴더 이동·가져오기) 열기 */
+async function openMore(page: Page): Promise<void> {
+  const more = page.locator('#more-actions');
+  if (!(await more.evaluate((d: HTMLDetailsElement) => d.open))) await more.locator('summary').click();
+}
+
 async function waitSaved(page: Page): Promise<void> {
   await expect(page.locator('#save-status')).toHaveText('LOCAL SAVED');
 }
@@ -158,6 +164,7 @@ test('프로젝트(ADR-0005): 만들기·전환하면 폴더와 메모가 따로
 
   // 메모를 기본 → 업무로 옮기면 같은 경로 메모가 있어 거절
   await page.locator('#tree button', { hasText: '기본 메모' }).click();
+  await openMore(page);
   await page.locator('#note-project').selectOption({ label: '프로젝트 이동: 업무' });
   await expect(page.locator('#project-status')).toContainText('같은 이름의 메모');
 
@@ -182,6 +189,7 @@ test('프로젝트(ADR-0005): 만들기·전환하면 폴더와 메모가 따로
   await page.locator('#project-select').selectOption({ label: '회사' });
   await expect(page.locator('#tree')).toContainText('기본 메모');
   await page.locator('#tree button', { hasText: '기본 메모' }).click();
+  await openMore(page);
   await page.locator('#note-project').selectOption({ label: '프로젝트 이동: 보관' });
   await expect(page.locator('#project-select option:checked')).toHaveText('보관');
   await expect(page.locator('#tree')).toContainText('기본 메모');
@@ -208,6 +216,7 @@ test('사용 의견(2026-11-13 2차): 새 메모 기본 제목은 일시 Memo, �
 
   // 폴더 이동
   await createNote(page, '옮길 메모');
+  await openMore(page);
   await page.locator('#note-folder').selectOption({ label: '폴더 이동: /보관' });
   await expect(page.locator('#folder-path')).toHaveText('/보관');
   const selected = page.locator('#tree button[aria-selected="true"]');
@@ -232,8 +241,11 @@ test('사용 의견 3차: 트리 메뉴(이름 바꾸기·이동·삭제), 드�
   await createNote(page, '회의');
   await page.locator('#tree button', { hasText: '▸ /' }).click();
   await enterName(page, '#add-folder', '보관');
-  const row = (text: string) => page.locator('.tree-row', { has: page.locator('button', { hasText: text }) });
-  const menu = async (text: string, action: 'rename' | 'move' | 'delete') => {
+  const exact = (text: string) => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+  // 메모 행은 '· 제목.md', 폴더 행은 '▸ 이름' → 메모는 제목만 넘겨도 정확히 그 행
+  const row = (text: string) =>
+    page.locator('.tree-row', { has: page.locator('button', { hasText: text.startsWith('▸') ? exact(text) : exact('· ' + text) }) });
+  const menu = async (text: string, action: 'rename' | 'move' | 'copy' | 'delete') => {
     await row(text).locator('.row-menu').click();
     await page.locator(`#menu-${action}`).click();
   };
@@ -274,9 +286,19 @@ test('사용 의견 3차: 트리 메뉴(이름 바꾸기·이동·삭제), 드�
   await page.locator('#tree button', { hasText: '주간 회의' }).click();
   await expect(page.locator('#folder-path')).toHaveText('/보관/회사');
 
+  // 복사: 메모는 "(사본)", 폴더는 안의 메모까지 "(사본)" 폴더로
+  await menu('주간 회의.md', 'copy');
+  await expect(page.locator('#title')).toHaveValue('주간 회의 (사본)');
+  await menu('▸ 보관', 'copy');
+  await expect(page.locator('#tree')).toContainText('▸ 보관 (사본)');
+  await expect(page.locator('#folder-path')).toHaveText('/보관 (사본)');
+  await menu('▸ 보관 (사본)', 'delete');
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#tree')).not.toContainText('보관 (사본)');
+
   // 폴더 삭제: 경고(개수) → 확인하면 안의 메모까지
   await menu('▸ 보관', 'delete');
-  await expect(page.locator('#confirm-dialog')).toContainText('메모 1개');
+  await expect(page.locator('#confirm-dialog')).toContainText('메모 2개');
   await page.locator('#confirm-ok').click();
   await expect(page.locator('#tree')).not.toContainText('보관');
   await expect(page.locator('#tree')).not.toContainText('주간 회의');

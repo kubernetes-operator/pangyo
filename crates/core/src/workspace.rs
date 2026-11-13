@@ -467,7 +467,10 @@ impl Workspace {
     pub fn delete_folder(&self, raw: &str) -> Result<()> {
         let (project, path) = match raw.split_once(FOLDER_KEY_SEPARATOR) {
             None => (String::new(), raw),
-            Some((id, path)) => (self.project_name_of(Some(id))?, path),
+            Some((id, path)) => match self.project_name_of(Some(id)) {
+                Ok(name) => (name, path),
+                Err(_) => return Ok(()), // 이미 없어진 프로젝트: 지울 폴더도 없음
+            },
         };
         self.store.remove_folder_if_empty(&project, path)
     }

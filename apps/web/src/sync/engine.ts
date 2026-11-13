@@ -177,6 +177,8 @@ export class SyncEngine {
       label: string;
       onStatus?: (s: SyncStatus) => void;
       onLeaseLost?: (noteId: string, message: string) => void;
+      /** 올리지 않을 '손대지 않은 기본 문서' (처음 실행 사용법). 서버에 같은 ID가 있으면 서버 것으로 맞춤 */
+      pristine?: (note: Note) => boolean;
     },
   ) {}
 
@@ -199,7 +201,7 @@ export class SyncEngine {
 
   /** 처음 계정에 연결할 때: 아직 올리지 않은 로컬 메모를 모두 올릴 대상으로 표시 */
   async adoptLocalNotes(): Promise<number> {
-    const local = this.store.list().filter((n) => !n.sync);
+    const local = this.store.list().filter((n) => !n.sync && !this.opts.pristine?.(n));
     for (const note of local) {
       note.sync = { version: 0, dirty: true };
       await this.store.save(note);
@@ -281,7 +283,8 @@ export class SyncEngine {
       this.store.changed([server.id]);
       return;
     }
-    const sync: NoteSync = local.sync ?? { version: 0, dirty: true };
+    // 손대지 않은 기본 문서는 서버 것으로 그냥 맞춤 (충돌로 보지 않음)
+    const sync: NoteSync = local.sync ?? { version: 0, dirty: !this.opts.pristine?.(local) };
     if (server.version <= sync.version) return; // 이미 반영됨 (내가 올린 결과 등)
     if (sync.deleting && !server.deleted) {
       // 지우려던 사이 다른 기기에서 고쳐짐 → 지우지 않고 최신 내용을 받음

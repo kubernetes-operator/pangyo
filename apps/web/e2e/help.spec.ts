@@ -1,19 +1,23 @@
 // === 처음 실행 도움말 (2026-11-13 사용 의견: 최초 페이지로 MD 작성 매뉴얼) + 상단 버튼 문구 ===
 import { expect, test } from '@playwright/test';
 
-test('처음 실행하면 사용법이 뜨고, 다시 열면 뜨지 않음. 메모로 만들 수 있음', async ({ page }) => {
+test('처음 실행하면 사용법이 첫 문서로 열리고(한 번만), 도움말 창에서도 볼 수 있음', async ({ page }) => {
   await page.goto('/');
-  const help = page.locator('#help-dialog');
-  await expect(help).toBeVisible();
-  await expect(page.locator('#help-text')).toContainText('## Markdown 쓰는 법');
-  await page.locator('#help-close').click();
-  await expect(help).toBeHidden();
+  await expect(page.locator('#title')).toHaveValue('MemoNest 사용법');
+  await expect(page.locator('#editor')).toHaveValue(/## Markdown 쓰는 법/);
+  await expect(page.locator('#count')).toHaveText('1 notes');
+  // 지워도 다시 만들지 않음
+  await page.locator('#delete-note').click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#count')).toHaveText('0 notes');
   await page.reload();
   await expect(page.locator('#title')).toBeVisible();
-  await expect(help).toBeHidden();
+  await expect(page.locator('#count')).toHaveText('0 notes');
 
-  // 도움말 버튼 → 메모로 만들기
   await page.locator('#help-btn').click();
+  await expect(page.locator('#help-text')).toContainText('## Markdown 쓰는 법');
+
+  // 도움말 창 → 메모로 만들기
   await page.locator('#help-to-note').click();
   await expect(page.locator('#title')).toHaveValue('MemoNest 사용법');
   await expect(page.locator('#editor')).toHaveValue(/# MemoNest 사용법/);

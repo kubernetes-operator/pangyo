@@ -227,6 +227,16 @@ async fn device_pairing_bearer_token_and_revocation() {
     assert!(list.json[0]["lastSeenAt"].is_string());
 
     let uri = format!("/api/v1/devices/{device_id}");
+    // 연결된 장비는 기록을 지울 수 없음 (먼저 폐기)
+    let early = app
+        .call(
+            Method::DELETE,
+            &format!("{uri}/record"),
+            None,
+            Auth::Cookie(&cookie),
+        )
+        .await;
+    assert_eq!(early.json["error"], "device_active");
     assert_eq!(
         app.call(Method::DELETE, &uri, None, Auth::Cookie(&cookie))
             .await
@@ -237,6 +247,25 @@ async fn device_pairing_bearer_token_and_revocation() {
         .call(Method::GET, "/api/v1/account", None, Auth::Bearer(&token))
         .await;
     assert_eq!(revoked.status, StatusCode::UNAUTHORIZED);
+    // 폐기한 장비의 기록 지우기 → 목록에서 사라짐
+    let forget = app
+        .call(
+            Method::DELETE,
+            &format!("{uri}/record"),
+            None,
+            Auth::Cookie(&cookie),
+        )
+        .await;
+    assert_eq!(forget.status, StatusCode::NO_CONTENT);
+    let list = app
+        .call(Method::GET, "/api/v1/devices", None, Auth::Cookie(&cookie))
+        .await;
+    assert!(list
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|d| d["id"] != device_id.as_str()));
     // 다른 사람 장비는 해제 불가
     let other = app.register("other@example.com").await.cookie.unwrap();
     assert_eq!(

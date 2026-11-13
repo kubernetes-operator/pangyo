@@ -2260,6 +2260,69 @@
           }
         }
       }
+    },
+    "/api/v1/devices/{id}/record": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "summary": "폐기한 장비의 기록을 목록에서 지우기 (연결된 장비는 409 device_active)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2455,7 +2518,8 @@
               "project_name_taken",
               "project_not_empty",
               "project_not_found",
-              "not_in_trash"
+              "not_in_trash",
+              "device_active"
             ]
           },
           "message": {

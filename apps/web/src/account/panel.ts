@@ -28,6 +28,10 @@ const TEXT: Record<Locale, Record<string, string>> = {
     pairStep1: '아래 "장비 등록 코드 만들기"를 누릅니다.',
     pairStep2: '앱에서 "계정 → 장비 연결"을 엽니다.',
     pairStep3: '화면에 나온 서버 주소와 코드(10분, 한 번만)를 입력하고 "연결"을 누릅니다.',
+    forget: '기록 지우기',
+    copy: '복사',
+    copied: '복사됨',
+    pairCode: '등록 코드',
     serverAddress: '서버 주소',
     devices: '등록된 장비',
     noDevices: '등록된 장비가 없습니다.',
@@ -81,6 +85,10 @@ const TEXT: Record<Locale, Record<string, string>> = {
     pairStep1: 'Press "Create device pairing code" below.',
     pairStep2: 'In the app, open "Account → Device link".',
     pairStep3: 'Enter the server address and code shown here (10 minutes, single use) and press "Link".',
+    forget: 'Remove',
+    copy: 'Copy',
+    copied: 'Copied',
+    pairCode: 'Pairing code',
     serverAddress: 'Server address',
     devices: 'Devices',
     noDevices: 'No devices yet.',
@@ -250,7 +258,20 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
     const percent = account.quotaBytes > 0 ? Math.min(100, (account.usedBytes / account.quotaBytes) * 100) : 0;
     const meter = el('meter', { min: 0, max: account.quotaBytes, value: account.usedBytes });
     const codeBox = el('p', { id: 'pairing-code', className: 'pairing-code' });
-    const serverBox = el('p', { id: 'pairing-server', className: 'muted' });
+    const serverBox = el('div', { id: 'pairing-server', className: 'pairing-server' });
+    /** 크게 보이는 값 + 복사 버튼 (2026-11-13 사용 의견: 서버 주소가 너무 작게 보임) */
+    const copyable = (label: string, value: string, id: string) => {
+      const copy = el('button', { type: 'button', className: 'copy' }, t('copy'));
+      copy.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          copy.textContent = t('copied');
+        } catch {
+          /* 복사 권한 없음: 직접 선택 */
+        }
+      };
+      return el('div', { className: 'pairing-value' }, el('small', {}, label), el('code', { id }, value), copy);
+    };
     const deviceList = el('ul', { className: 'device-list', id: 'device-list' });
     const logout = el('button', { type: 'button', id: 'account-logout' }, t('logout'));
     logout.onclick = async () => {
@@ -264,7 +285,10 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       try {
         const p = await accountApi.pairingStart();
         codeBox.textContent = `${p.code} · ~${new Date(p.expiresAt).toLocaleTimeString()}`;
-        serverBox.textContent = `${t('serverAddress')}: ${location.origin}`;
+        serverBox.replaceChildren(
+          copyable(t('serverAddress'), location.origin, 'pairing-server-url'),
+          copyable(t('pairCode'), p.code, 'pairing-code-value'),
+        );
       } catch (e) {
         codeBox.textContent = e instanceof ApiError ? e.message : t('unavailable');
       }
@@ -468,12 +492,19 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
     }
     list.replaceChildren(
       ...devices.map((d) => {
-        const revoke = el('button', { type: 'button', disabled: !!d.revokedAt }, d.revokedAt ? t('revoked') : t('revoke'));
-        revoke.onclick = async () => {
-          await accountApi.revokeDevice(d.id).catch(() => undefined);
+        // 폐기 전: '폐기', 폐기 후: '기록 지우기' (목록에서 없앰)
+        const action = el('button', { type: 'button', className: d.revokedAt ? 'forget' : '' }, d.revokedAt ? t('forget') : t('revoke'));
+        action.onclick = async () => {
+          action.disabled = true;
+          await (d.revokedAt ? accountApi.forgetDevice(d.id) : accountApi.revokeDevice(d.id)).catch(() => undefined);
           await renderDevices(list);
         };
-        return el('li', {}, `${d.name} (${d.platform}) `, revoke);
+        return el(
+          'li',
+          { dataset: { deviceId: d.id } },
+          el('span', {}, `${d.name} (${d.platform})`, ...(d.revokedAt ? [el('small', { className: 'muted' }, ` · ${t('revoked')}`)] : [])),
+          action,
+        );
       }),
     );
   }

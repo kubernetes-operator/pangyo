@@ -596,6 +596,38 @@ pub async fn revoke_device(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// 폐기한 장비의 기록 지우기 (2026-11-13 사용 의견: 해제한 장비 정보를 목록에서 없애기). 폐기 전 장비는 409
+pub async fn forget_device(
+    State(state): State<AppState>,
+    current: CurrentAccount,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    current.require(Scope::Account)?;
+    let row: Option<(bool,)> = sqlx::query_as(
+        "SELECT revoked_at IS NOT NULL FROM devices WHERE id = $1 AND account_id = $2",
+    )
+    .bind(id)
+    .bind(current.id)
+    .fetch_optional(state.db()?)
+    .await?;
+    match row {
+        None => Err(ApiError::not_found()),
+        Some((false,)) => Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "device_active",
+            "연결된 장비는 먼저 폐기한 뒤 지울 수 있습니다",
+        )),
+        Some((true,)) => {
+            sqlx::query("DELETE FROM devices WHERE id = $1 AND account_id = $2")
+                .bind(id)
+                .bind(current.id)
+                .execute(state.db()?)
+                .await?;
+            Ok(StatusCode::NO_CONTENT)
+        }
+    }
+}
+
 // ---------- 내부 도우미 ----------
 
 async fn load_account(db: &PgPool, id: Uuid) -> ApiResult<AccountView> {

@@ -37,6 +37,10 @@ test('가입 → 계정·용량 표시 → 장비 등록 코드 → 로그아웃
   await expect(dialog.locator('#pairing-howto')).toContainText('장비 등록 코드 만들기');
   await dialog.locator('#pairing-start').click();
   await expect(dialog.locator('#pairing-code')).toHaveText(/^[A-HJ-NP-Z2-9]{8} · /);
+  // 서버 주소·코드를 크게 + 복사 버튼 (2026-11-13 사용 의견)
+  await expect(dialog.locator('#pairing-server-url')).toHaveText(new URL(page.url()).origin);
+  await expect(dialog.locator('#pairing-code-value')).toHaveText(/^[A-HJ-NP-Z2-9]{8}$/);
+  await expect(dialog.locator('#pairing-server .copy')).toHaveCount(2);
 
   // 새로고침해도 로그인 유지 (HttpOnly 쿠키)
   await page.reload();
