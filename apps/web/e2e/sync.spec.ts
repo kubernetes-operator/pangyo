@@ -25,8 +25,9 @@ async function deviceFor(browser: Browser, email: string, register: boolean): Pr
 }
 
 async function createNote(page: Page, title: string, content: string) {
-  page.once('dialog', (d) => void d.accept(title));
   await page.locator('#add-note').click();
+  await page.locator('#name-input').fill(title);
+  await page.locator('#name-input').press('Enter');
   await expect(page.locator('#title')).toHaveValue(title);
   await page.locator('#editor').click();
   await page.locator('#editor').pressSequentially(content);

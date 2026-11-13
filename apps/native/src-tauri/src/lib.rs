@@ -121,6 +121,18 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| e.to_string())?
 }
 
+/// 장비 등록 화면의 기본 장비 이름에 쓸 호스트 이름 (2026-11-13 사용 의견: 내 기기 이름이 먼저 보이게).
+/// 알 수 없거나 의미 없는 값(localhost 등, Android에서 흔함)이면 None → 화면이 기기 모델/OS로 대신 채움
+#[tauri::command]
+fn device_hostname() -> Option<String> {
+    let name = whoami::fallible::hostname().unwrap_or_default();
+    let name = name.trim();
+    let useless = name.is_empty()
+        || name.eq_ignore_ascii_case("localhost")
+        || name.eq_ignore_ascii_case("unknown");
+    (!useless).then(|| name.chars().take(60).collect())
+}
+
 #[tauri::command]
 async fn device_status(remote: State<'_, RemoteState>) -> CommandResult<Option<DeviceInfo>> {
     blocking(&remote, |r| Ok(r.status())).await
@@ -216,6 +228,7 @@ pub fn run() {
             list_external_deletions,
             forget_external_deletion,
             device_status,
+            device_hostname,
             device_pair,
             device_unpair,
             server_request

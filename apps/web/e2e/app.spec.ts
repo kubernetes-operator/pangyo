@@ -4,31 +4,18 @@ import { expect, test, type Page } from '@playwright/test';
 
 const HISTORY_LIMIT = 250;
 
-/**
- * 대화상자(prompt/alert)를 순서대로 처리합니다. answer(값)을 호출한 순서대로 다음 대화상자에 응답하고,
- * 그 대화상자의 메시지를 돌려줍니다. 핸들러가 여러 개 동시에 반응하지 않도록 큐 하나로 관리합니다.
- */
-const dialogQueues = new WeakMap<Page, Array<{ value?: string; resolve: (m: string) => void }>>();
-function answerNextDialog(page: Page, value?: string): Promise<string> {
-  let queue = dialogQueues.get(page);
-  if (!queue) {
-    const q: Array<{ value?: string; resolve: (m: string) => void }> = [];
-    dialogQueues.set(page, q);
-    page.on('dialog', async (dialog) => {
-      const next = q.shift();
-      if (!next) return dialog.dismiss();
-      next.resolve(dialog.message());
-      await dialog.accept(next.value);
-    });
-    queue = q;
-  }
-  return new Promise((resolve) => queue.push({ value, resolve }));
+/** 앱 이름 입력 창(+ 메모, + 폴더)에 값을 넣고 Enter로 확인 (2026-11-13: prompt() 대신 앱 자체 창) */
+async function enterName(page: Page, button: '#add-note' | '#add-folder', value: string): Promise<void> {
+  await page.locator(button).click();
+  const input = page.locator('#name-dialog #name-input');
+  await expect(input).toBeFocused();
+  await input.fill(value);
+  await input.press('Enter');
 }
 
 async function createNote(page: Page, title: string): Promise<void> {
-  const dialog = answerNextDialog(page, title);
-  await page.locator('#add-note').click();
-  await dialog;
+  await enterName(page, '#add-note', title);
+  await expect(page.locator('#name-dialog')).toHaveCount(0);
   await expect(page.locator('#title')).toHaveValue(title);
 }
 
@@ -66,18 +53,64 @@ test('T-01 오프라인에서 앱 로드와 편집 (서비스워커)', async ({ 
 
 test('T-02 폴더는 2단계까지만 허용', async ({ page }) => {
   await page.goto('/');
-  let dialog = answerNextDialog(page, 'Work/Project');
-  await page.locator('#add-folder').click();
-  await dialog;
+  await enterName(page, '#add-folder', 'Work/Project');
   await expect(page.locator('#folder-path')).toHaveText('/Work/Project');
   await expect(page.locator('#tree')).toContainText('▸ Project');
 
-  dialog = answerNextDialog(page, 'Work/Project/Deep');
-  const alert = answerNextDialog(page);
-  await page.locator('#add-folder').click();
-  await dialog;
-  expect(await alert).toContain('최대 2단계');
+  // 3단계는 창을 닫지 않고 이유를 보여 줌 (alert 없음)
+  await enterName(page, '#add-folder', 'Work/Project/Deep');
+  await expect(page.locator('#name-error')).toContainText('최대 2단계');
+  await page.locator('#name-cancel').click();
+  await expect(page.locator('#name-dialog')).toHaveCount(0);
   await expect(page.locator('#tree')).not.toContainText('Deep');
+});
+
+test('사용 의견(2026-11-13): 이름 창 Enter 확인·취소, 제목 Enter → 본문, 연 메모와 그 폴더만 강조, 표시 설명', async ({ page }) => {
+  await page.goto('/');
+  // 새 폴더: 선택한 폴더 뒤에 이어 쓰도록 커서가 끝에 있음
+  await enterName(page, '#add-folder', '업무');
+  await page.locator('#add-folder').click();
+  await expect(page.locator('#name-input')).toHaveValue('업무/');
+  await page.locator('#name-input').press('End');
+  await page.locator('#name-input').pressSequentially('회의');
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#folder-path')).toHaveText('/업무/회의');
+
+  // 새 메모는 선택한 폴더에 만들어지고, 저장 위치가 창에 보임
+  await page.locator('#add-note').click();
+  await expect(page.locator('#name-dialog .hint')).toContainText('/업무/회의');
+  await page.locator('#name-input').fill('회의록');
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#title')).toHaveValue('회의록');
+
+  // 취소하면 아무것도 만들지 않음
+  await page.locator('#add-note').click();
+  await page.locator('#name-input').press('Escape');
+  await expect(page.locator('#name-dialog')).toHaveCount(0);
+  await expect(page.locator('#count')).toHaveText('1 notes');
+
+  // 제목에서 Enter → 줄 바꿈 없이 본문으로 이동
+  await page.locator('#title').click();
+  await page.locator('#title').press('End');
+  await page.locator('#title').press('Enter');
+  await expect(page.locator('#editor')).toBeFocused();
+  await expect(page.locator('#title')).toHaveValue('회의록');
+
+  // 루트로 가서 다른 메모를 만든 뒤 다시 '회의록'을 열면: 그 메모와 그 폴더만 강조
+  await page.locator('#tree button', { hasText: '▸ /' }).click();
+  await createNote(page, '루트 메모');
+  await page.locator('#tree button', { hasText: '회의록' }).click();
+  const selected = page.locator('#tree button[aria-selected="true"]');
+  await expect(selected).toHaveCount(2);
+  await expect(selected.nth(0)).toHaveText('▸ 회의');
+  await expect(selected.nth(1)).toHaveText('· 회의록.md');
+  await expect(page.locator('#folder-path')).toHaveText('/업무/회의');
+
+  // 정리 영역 표시 설명
+  await expect(page.locator('#depth-hint')).toHaveText('폴더 2단계까지');
+  await page.locator('#organizer-help summary').click();
+  await expect(page.locator('#organizer-help')).toContainText('한 폴더 안의 폴더 개수 제한은 없습니다');
+  await expect(page.locator('#wifi')).toHaveText('네트워크: 온라인');
 });
 
 test('T-03 MD/TXT 다운로드 내용이 UTF-8로 동일', async ({ page }) => {

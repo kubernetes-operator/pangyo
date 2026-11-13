@@ -15,6 +15,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     register: '가입',
     email: '이메일',
     password: '비밀번호 (10자 이상)',
+    passwordConfirm: '비밀번호 확인 (한 번 더)',
+    passwordMismatch: '비밀번호가 서로 다릅니다. 다시 확인하세요.',
     displayName: '이름 (선택)',
     toRegister: '계정이 없나요? 가입',
     toLogin: '이미 계정이 있나요? 로그인',
@@ -22,7 +24,10 @@ const TEXT: Record<Locale, Record<string, string>> = {
     logout: '로그아웃',
     storage: '저장 공간',
     pair: '장비 등록 코드 만들기',
-    pairHelp: '데스크톱/모바일 앱의 "계정 → 장비 연결"에 서버 주소와 코드를 10분 안에 입력하세요.',
+    pairTitle: '장비(데스크톱·모바일 앱) 추가 방법',
+    pairStep1: '아래 "장비 등록 코드 만들기"를 누릅니다.',
+    pairStep2: '앱에서 "계정 → 장비 연결"을 엽니다.',
+    pairStep3: '화면에 나온 서버 주소와 코드(10분, 한 번만)를 입력하고 "연결"을 누릅니다.',
     serverAddress: '서버 주소',
     devices: '등록된 장비',
     noDevices: '등록된 장비가 없습니다.',
@@ -38,6 +43,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     tokenWrite: '쓰기 허용 (메모 수정)',
     tokenTtl: '만료',
     tokenCreate: '토큰 만들기',
+    tokenNew: '새 토큰 만들기 (눌러서 입력)',
     tokenOnce: '지금만 보입니다. n8n의 Header Auth 자격 증명(Authorization: Bearer …)에 저장하세요.',
     tokenNone: '발급한 토큰이 없습니다.',
     days: '일',
@@ -53,6 +59,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     register: 'Sign up',
     email: 'Email',
     password: 'Password (10+ characters)',
+    passwordConfirm: 'Confirm password',
+    passwordMismatch: 'Passwords do not match.',
     displayName: 'Name (optional)',
     toRegister: 'No account? Sign up',
     toLogin: 'Have an account? Log in',
@@ -60,7 +68,10 @@ const TEXT: Record<Locale, Record<string, string>> = {
     logout: 'Log out',
     storage: 'Storage',
     pair: 'Create device pairing code',
-    pairHelp: 'Enter the server address and code in the desktop/mobile app (Account → Device link) within 10 minutes.',
+    pairTitle: 'How to add a device (desktop/mobile app)',
+    pairStep1: 'Press "Create device pairing code" below.',
+    pairStep2: 'In the app, open "Account → Device link".',
+    pairStep3: 'Enter the server address and code shown here (10 minutes, single use) and press "Link".',
     serverAddress: 'Server address',
     devices: 'Devices',
     noDevices: 'No devices yet.',
@@ -76,6 +87,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     tokenWrite: 'Allow writes (edit notes)',
     tokenTtl: 'Expires in',
     tokenCreate: 'Create token',
+    tokenNew: 'New token (click to fill in)',
     tokenOnce: 'Shown only now. Save it in n8n as a Header Auth credential (Authorization: Bearer …).',
     tokenNone: 'No tokens yet.',
     days: 'days',
@@ -149,6 +161,18 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       minLength: mode === 'register' ? 10 : 1,
       autocomplete: mode === 'register' ? 'new-password' : 'current-password',
     });
+    const confirm = el('input', {
+      type: 'password',
+      name: 'passwordConfirm',
+      required: true,
+      minLength: 10,
+      autocomplete: 'new-password',
+    });
+    // 가입 시 비밀번호 두 번 입력: 다르면 제출 막기 (오타로 모르는 비밀번호가 되는 것 방지)
+    const checkConfirm = () =>
+      confirm.setCustomValidity(confirm.value && confirm.value !== password.value ? t('passwordMismatch') : '');
+    confirm.addEventListener('input', checkConfirm);
+    password.addEventListener('input', checkConfirm);
     const name = el('input', { type: 'text', name: 'displayName', maxLength: 80, autocomplete: 'name' });
     const submit = el('button', { type: 'submit', className: 'primary' }, t(mode));
     const form = el(
@@ -156,12 +180,19 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       { className: 'account-form', id: `account-${mode}-form` },
       el('label', {}, t('email'), email),
       el('label', {}, t('password'), password),
-      ...(mode === 'register' ? [el('label', {}, t('displayName'), name)] : []),
+      ...(mode === 'register'
+        ? [el('label', {}, t('passwordConfirm'), confirm), el('label', {}, t('displayName'), name)]
+        : []),
       submit,
       status,
     );
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (mode === 'register' && confirm.value !== password.value) {
+        status.textContent = t('passwordMismatch');
+        confirm.focus();
+        return;
+      }
       submit.disabled = true;
       status.textContent = '';
       try {
@@ -170,6 +201,7 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
             ? await accountApi.register(email.value, password.value, name.value)
             : await accountApi.login(email.value, password.value);
         password.value = '';
+        confirm.value = '';
         await renderAccount(account);
       } catch (e) {
         status.textContent = e instanceof ApiError ? e.message : t('unavailable');
@@ -229,10 +261,15 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
         el('span', { id: 'account-quota' }, `${formatBytes(account.usedBytes)} / ${formatBytes(account.quotaBytes)} (${percent.toFixed(0)}%)`),
       ),
       message(t('note')),
+      el(
+        'div',
+        { className: 'callout', id: 'pairing-howto' },
+        el('strong', {}, t('pairTitle')),
+        el('ol', {}, el('li', {}, t('pairStep1')), el('li', {}, t('pairStep2')), el('li', {}, t('pairStep3'))),
+      ),
       el('div', { className: 'toolbar' }, pair, logout),
       codeBox,
       serverBox,
-      message(t('pairHelp')),
       el('h3', {}, t('devices')),
       deviceList,
       ...downloadSection(),
@@ -301,8 +338,14 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
     void renderTokens(list);
     return [
       el('h3', {}, t('tokens')),
-      el('div', { className: 'account-form' }, name, el('label', { className: 'inline' }, write, t('tokenWrite')),
-        el('label', { className: 'inline' }, t('tokenTtl'), ttl), button, status),
+      // 눌렀을 때만 입력란 표시 (평소에는 발급된 토큰 목록만)
+      el(
+        'details',
+        { className: 'token-new', id: 'token-new' },
+        el('summary', {}, t('tokenNew')),
+        el('div', { className: 'account-form' }, name, el('label', { className: 'inline' }, write, t('tokenWrite')),
+          el('label', { className: 'inline' }, t('tokenTtl'), ttl), button, status),
+      ),
       created,
       createdHelp,
       list,

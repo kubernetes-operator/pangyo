@@ -21,6 +21,7 @@ export const COMMANDS = {
   forgetExternalDeletion: 'forget_external_deletion',
   // 장비 등록·서버 연결 (토큰은 Rust에만 있음)
   deviceStatus: 'device_status',
+  deviceHostname: 'device_hostname',
   devicePair: 'device_pair',
   deviceUnpair: 'device_unpair',
   serverRequest: 'server_request',
@@ -65,6 +66,8 @@ export class DeviceError extends Error {
 
 export const deviceApi = {
   status: () => invoke<DeviceInfo | null>(COMMANDS.deviceStatus).catch(() => null),
+  /** 이 기기의 호스트 이름 (없으면 null) */
+  hostname: () => invoke<string | null>(COMMANDS.deviceHostname).catch(() => null),
   async pair(serverUrl: string, code: string, deviceName: string): Promise<DeviceInfo> {
     try {
       return await invoke<DeviceInfo>(COMMANDS.devicePair, { serverUrl, code, deviceName, now: new Date().toISOString() });

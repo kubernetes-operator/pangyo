@@ -17,10 +17,19 @@ test('가입 → 계정·용량 표시 → 장비 등록 코드 → 로그아웃
   await form.locator('input[name=email]').fill(email);
   await form.locator('input[name=password]').fill(PASSWORD);
   await form.locator('input[name=displayName]').fill('테스터');
+  // 비밀번호 확인이 다르면 가입하지 않음
+  await form.locator('input[name=passwordConfirm]').fill(PASSWORD + 'x');
+  await form.locator('button[type=submit]').click();
+  await expect(form).toBeVisible();
+  expect(await form.locator('input[name=passwordConfirm]').evaluate((el: HTMLInputElement) => el.validationMessage)).toContain(
+    '비밀번호가 서로 다릅니다',
+  );
+  await form.locator('input[name=passwordConfirm]').fill(PASSWORD);
   await form.locator('button[type=submit]').click();
 
   await expect(dialog.locator('#account-email')).toContainText(email);
   await expect(dialog.locator('#account-quota')).toHaveText('0 B / 100 MB (0%)');
+  await expect(dialog.locator('#pairing-howto')).toContainText('장비 등록 코드 만들기');
   await dialog.locator('#pairing-start').click();
   await expect(dialog.locator('#pairing-code')).toHaveText(/^[A-HJ-NP-Z2-9]{8} · /);
 
@@ -75,6 +84,9 @@ test('자동화 토큰(n8n): 만들기 → 원문 1회 표시 → 그 토큰으�
   await page.reload();
   await page.locator('#account-btn').click();
   const dialog = page.locator('#account-dialog');
+  // 입력란은 '새 토큰 만들기'를 눌렀을 때만 보임
+  await expect(dialog.locator('#token-name')).toBeHidden();
+  await dialog.locator('#token-new summary').click();
   await dialog.locator('#token-name').fill('n8n 테스트');
   await dialog.locator('#token-create').click();
   const created = dialog.locator('#token-created');
