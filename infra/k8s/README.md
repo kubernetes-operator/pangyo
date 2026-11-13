@@ -28,6 +28,8 @@ helm upgrade --install memonest-api infra/k8s/helm/memonest \
   `kubectl -n memonest create secret generic memonest-admin --from-literal=emails='<관리자 이메일>'` → API Pod 재시작 후 적용
   (`kubectl -n memonest rollout restart deploy/memonest-api`). 그 이메일로 로그인하면 계정 화면에 **시스템(관리자)** 영역이 보입니다.
   기본 저장공간을 바꾸면 따로 정하지 않은 모든 계정에 바로 적용되고, 계정별로 따로 정할 수도 있습니다.
+- **앱 안 업데이트(A안)**: CI가 앱에 빌드 커밋(`MEMONEST_BUILD`)을 넣고, `publish-downloads.sh`가 목록(manifest)에 `build`를 기록합니다.
+  연결된 앱은 시작할 때와 6시간마다 비교해 다르면 상단에 **새 버전 있음**을 띄우고, 누르면 그 기기용 설치 파일을 일회용 주소로 받아 OS 설치 화면으로 넘깁니다(서명 키 불필요, 설치는 사용자가 확인).
 - 웹 앱 → 계정 → **설치 파일**: 로그인 사용자에게 목록 표시, **받기**를 누르면 5분 유효한 **일회용** 임의 주소(`/dl/<토큰>`)로 내려받음(끝까지 받으면 링크가 닫히고, 받는 중 같은 링크의 다른 요청은 거절, 중간에 끊기면 5분 안에 재시도 가능 — 다시 받으려면 **받기**를 한 번 더). 실제 저장 위치·버전 폴더는 드러나지 않음.
 - 저장: PVC `<릴리스>-downloads`(2Gi, RWX, uninstall 후에도 유지), API는 읽기 전용 마운트.
 - 게시(운영 변경, 승인 후): `./scripts/publish-downloads.sh <package 워크플로 실행 ID>` — GitHub 결과물 받기 → 임시 Pod로 복사 → 목록 파일은 마지막에 교체(받는 중인 사용자 영향 없음) → 최근 2개 버전만 보관.

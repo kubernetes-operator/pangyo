@@ -121,6 +121,49 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| e.to_string())?
 }
 
+/// 이 앱의 버전·빌드 (앱 안 업데이트 확인용). 빌드는 CI가 `MEMONEST_BUILD`(커밋)로 넣음, 로컬 빌드는 None
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppInfo {
+    version: &'static str,
+    build: Option<&'static str>,
+    platform: &'static str,
+}
+
+#[tauri::command]
+fn app_info() -> AppInfo {
+    AppInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        build: option_env!("MEMONEST_BUILD").filter(|b| !b.is_empty()),
+        platform: std::env::consts::OS,
+    }
+}
+
+/// 서버가 발급한 일회용 다운로드 주소(`<연결한 서버>/dl/<토큰>`)만 OS 브라우저(Android: 다운로드 → 설치 화면)로 엶.
+/// 다른 주소는 거절 (화면이 임의 주소를 열지 못하게)
+#[tauri::command]
+async fn open_download(
+    app: tauri::AppHandle,
+    remote: State<'_, RemoteState>,
+    url: String,
+) -> CommandResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let info = blocking(&remote, |r| Ok(r.status())).await?;
+    let base = info.map(|i| i.server_url).ok_or("not_paired")?;
+    let valid = url.strip_prefix(&format!("{base}/dl/")).is_some_and(|t| {
+        !t.is_empty()
+            && t.len() <= 64
+            && t.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    });
+    if !valid {
+        return Err("허용되지 않은 다운로드 주소".into());
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 /// 장비 등록 화면의 기본 장비 이름에 쓸 호스트 이름 (2026-11-13 사용 의견: 내 기기 이름이 먼저 보이게).
 /// 알 수 없거나 의미 없는 값(localhost 등, Android에서 흔함)이면 None → 화면이 기기 모델/OS로 대신 채움
 #[tauri::command]
@@ -182,6 +225,7 @@ fn notes_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
 pub fn run() {
     let diagnostics = std::env::var_os(WEBVIEW_CONSOLE_ENV).is_some_and(|v| v == "1");
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .on_page_load(move |webview, payload| {
             if diagnostics {
                 eprintln!(
@@ -229,6 +273,8 @@ pub fn run() {
             forget_external_deletion,
             device_status,
             device_hostname,
+            app_info,
+            open_download,
             device_pair,
             device_unpair,
             server_request

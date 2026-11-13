@@ -10,6 +10,7 @@
   5. 앱 밖 삭제 → 서버에서 바로 지우지 않고 '확인 필요' → 화면에서 '서버에서도 삭제' → 서버 묘비
   6. 장비 토큰이 앱 데이터 폴더(인덱스·device.json)에 평문으로 남지 않음
   7. 웹에서 장비를 폐기하면 앱이 동기화를 멈추고 다시 연결하라고 안내 (메모 파일은 그대로)
+  9. 앱 안 업데이트(A안): 게시한 빌드가 앱과 다르면 상단에 '새 버전 있음'
   8. 프로젝트(ADR-0005): 웹 프로젝트 메모 → `@이름` 폴더, 앱 밖 `@폴더` → 서버 프로젝트, 웹에서 이름 바꾸면 폴더 이름도
 사용자의 실제 메모 폴더·앱 데이터·키링은 건드리지 않습니다 (임시 HOME + 격리된 D-Bus 세션의 임시 키링).
 
@@ -106,9 +107,18 @@ def main() -> int:
     server = app = None
     results = []
     try:
+        # 앱 안 업데이트 확인용 가짜 설치 파일 목록 (게시 빌드 ≠ 앱 빌드)
+        downloads = work / "downloads"
+        (downloads / "0.1.0").mkdir(parents=True)
+        (downloads / "0.1.0" / "MemoNest.AppImage").write_bytes(b"fake")
+        (downloads / "manifest.json").write_text(json.dumps({
+            "version": "0.1.0", "build": "1111111newer", "files": [
+                {"id": "linux-appimage", "platform": "Linux", "label": "AppImage", "file": "0.1.0/MemoNest.AppImage",
+                 "size": 4, "sha256": "x"}]}), encoding="utf-8")
         server = subprocess.Popen(
             [str(ROOT / "target/debug/memonest-server")],
             env={**os.environ, "API_BIND_ADDRESS": f"127.0.0.1:{SERVER_PORT}", "DATABASE_URL": database_url,
+                 "DOWNLOADS_DIR": str(downloads),
                  "COOKIE_SECURE": "false", "LEASE_TTL_SECS": "10", "RUST_LOG": "warn"},
             stdout=(work / "server.log").open("wb"), stderr=subprocess.STDOUT, start_new_session=True)
         api = Api()
@@ -162,6 +172,8 @@ def main() -> int:
                 print("화면 조작 스크립트가 실행되지 않았습니다: e2e feature 빌드가 아닙니다. make desktop-sync-check 로 실행하세요")
             print("--- app.log ---\n" + "\n".join(l for l in log().splitlines() if not l.startswith("libEGL")))
             return 1
+        results.append(wait("9. 앱 안 업데이트: 게시 빌드가 다르면 '새 버전 있음' 표시",
+                            lambda: "[e2e] update shown" in log() or ("[e2e] update not shown" in log() and None)))
         by_title = lambda: {n["title"]: n for n in api.notes().values() if not n["deleted"]}
         results.append(wait("1. 데스크톱 파일 → 서버", lambda: {"Inbox", "rename-me"} <= set(by_title())))
         results.append(wait("2. 서버 메모 → 데스크톱 파일",
@@ -291,6 +303,12 @@ E2E_JS = r"""
     throw new Error(e + ' / 화면: ' + (document.querySelector('#account-body')?.textContent ?? ''));
   }
   console.log('[e2e] paired');
+  // 앱 안 업데이트(A안): 게시 목록의 build가 앱(0000000check)과 다르므로 '새 버전 있음'이 보여야 함
+  for (let i = 0; document.querySelector('#update-btn')?.hidden !== false; i++) {
+    if (i > 100) { console.log('[e2e] update not shown'); break; }
+    await sleep(300);
+  }
+  if (document.querySelector('#update-btn')?.hidden === false) console.log('[e2e] update shown');
   document.querySelector('#account-close').click();
   for (;;) {
     if ((document.querySelector('#sync-status')?.textContent ?? '').includes('밖에서 삭제')) break;

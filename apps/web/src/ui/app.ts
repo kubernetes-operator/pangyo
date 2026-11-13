@@ -3,7 +3,7 @@ import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
-import { accountApi, searchApi, ServerUnavailable, setTransport } from '../account/api';
+import { accountApi, downloadApi, searchApi, ServerUnavailable, setTransport } from '../account/api';
 import type { DeletionChoice } from '../account/device-panel';
 import type { DeviceInfo, ExternalDeletion } from '../storage/tauri';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
@@ -11,6 +11,7 @@ import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
 import { askConfirm, askName } from './name-dialog';
+import { buildLabel, pickUpdate, type UpdateState } from './app-update';
 import {
   CURRENT_PROJECT_META_KEY,
   DEFAULT_PROJECT,
@@ -547,6 +548,9 @@ async function startDeviceSync(info: DeviceInfo): Promise<void> {
     return;
   }
   await startSync(accountId, info.deviceName);
+  void checkAppUpdate().catch(() => undefined);
+  clearInterval(appUpdate.timer);
+  appUpdate.timer = setInterval(() => void checkAppUpdate().catch(() => undefined), UPDATE_CHECK_MS);
 }
 
 async function stopDeviceSync(): Promise<void> {
@@ -564,6 +568,52 @@ function onDeviceUnauthorized(): void {
 }
 
 /** 앱: 서버 요청을 장비 토큰 전송으로 바꾸고 장비 연결 화면을 붙임 */
+// === 앱 안 업데이트 (A안) ===
+const appUpdate = {
+  state: null as UpdateState | null,
+  timer: undefined as ReturnType<typeof setInterval> | undefined,
+};
+const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000; // 6시간마다 (앱을 켜 두는 경우)
+
+/** 서버에 게시한 설치 파일 목록과 이 앱의 빌드를 비교 → 새 버전이면 상단 버튼 표시. 결과 문구를 돌려줌 */
+async function checkAppUpdate(): Promise<string> {
+  const ko = state.locale === 'ko';
+  const { appApi } = await import('../storage/tauri');
+  const info = await appApi.info();
+  if (!info.build) return ko ? '개발 빌드라 업데이트를 확인하지 않습니다.' : 'Development build: updates are not checked.';
+  if (!device.info) return ko ? '장비를 연결하면 업데이트를 확인할 수 있습니다.' : 'Link this device to check for updates.';
+  try {
+    appUpdate.state = pickUpdate(info, await downloadApi.list());
+  } catch {
+    return ko ? '서버에 연결할 수 없어 확인하지 못했습니다.' : 'Could not reach the server.';
+  }
+  $('update-btn').hidden = !appUpdate.state.file;
+  if (appUpdate.state.file) return WORDS[state.locale].updateAvailable + ` (${appUpdate.state.publishedBuild?.slice(0, 7)})`;
+  return ko ? '최신 버전입니다.' : 'You are up to date.';
+}
+
+async function installAppUpdate(): Promise<void> {
+  const update = appUpdate.state;
+  const server = device.info?.serverUrl;
+  if (!update?.file || !server) return;
+  const w = WORDS[state.locale];
+  const ok = await askConfirm({
+    message: w.updateConfirm.replace('{build}', update.publishedBuild?.slice(0, 7) ?? ''),
+    ok: w.updateGet,
+    cancel: w.cancel,
+  });
+  if (!ok) return;
+  try {
+    const { appApi } = await import('../storage/tauri');
+    const link = await downloadApi.link(update.file.id);
+    await appApi.openDownload(server + link.url);
+    $('project-status').textContent = w.updateOpened;
+  } catch (e) {
+    console.error(e);
+    $('project-status').textContent = w.updateFailed;
+  }
+}
+
 async function setupDevice(): Promise<void> {
   const tauri = await import('../storage/tauri');
   const { createDevicePanel } = await import('../account/device-panel');
@@ -575,7 +625,10 @@ async function setupDevice(): Promise<void> {
     statusText: () => syncStatusText(state.syncStatus, state.locale, state.syncBlocked, device.deletions.length, device.revoked),
     resolveDeletion,
     revoked: () => device.revoked,
+    appVersion: async () => buildLabel(await tauri.appApi.info()),
+    checkUpdate: checkAppUpdate,
   });
+  $('update-btn').onclick = () => void installAppUpdate();
   device.panel = panel;
   $('account-btn').onclick = () => void panel.open();
   $('sync-status').onclick = () => void panel.open();

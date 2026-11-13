@@ -43,6 +43,9 @@ pub const LINK_PREFIX: &str = "/dl/";
 #[derive(Debug, Clone, Deserialize)]
 pub struct Manifest {
     pub version: String,
+    /// 빌드 커밋 (앱 안 업데이트 비교용, scripts/publish-downloads.sh가 기록). 예전 목록에는 없음
+    #[serde(default)]
+    pub build: Option<String>,
     pub files: Vec<ManifestFile>,
 }
 
@@ -72,6 +75,8 @@ pub struct DownloadItem {
 #[serde(rename_all = "camelCase")]
 pub struct DownloadList {
     version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    build: Option<String>,
     files: Vec<DownloadItem>,
 }
 
@@ -126,6 +131,7 @@ pub async fn list(
     let (_, manifest) = load_manifest(&state).await?;
     Ok(Json(DownloadList {
         version: manifest.version,
+        build: manifest.build,
         files: manifest
             .files
             .into_iter()

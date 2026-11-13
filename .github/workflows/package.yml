@@ -14,6 +14,9 @@ on:
       - ".github/workflows/package.yml"
 permissions:
   contents: read
+env:
+  # 앱 안 업데이트(A안): 앱에 빌드 커밋을 넣고, 게시한 목록(manifest build)과 비교해 새 버전을 알림
+  MEMONEST_BUILD: ${{ github.sha }}
 concurrency:
   group: package-${{ github.ref }}
   cancel-in-progress: true
