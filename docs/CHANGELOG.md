@@ -171,3 +171,8 @@
 - 배포(2026-11-12, PR #8 `dc1ad15`): rev 11 `sha-dc1ad15`(`--reset-then-reuse-values`, 모니터링 설정 유지). API 로그 `database connected and migrated`(007 적용), `/readyz` ok, 없는 링크 `/dl/...` 404, 지표 수집 up. 배포 중 외부 `/healthz` 60회: 200 56회, 시간 초과 4회(기존 외부 경로 지연).
 - 위험: "끝까지 보냄"은 서버가 파일을 다 읽어 보낸 시점 기준(중간 프록시·클라이언트 수신 완료까지는 보장하지 않음). 이어받기(Range)는 지원하지 않음(기존과 같음).
 
+## Unreleased — 로드맵 10: 외부 경로 지연 조사 (문서만)
+- `docs/09_OPERATIONS.md`에 측정 결과·원인·선택지 기록. 클러스터·Cloudflare 설정 변경 없음(조회와 `/healthz`·`/cdn-cgi/trace` 요청만).
+- 원인: 한국에서 Cloudflare 미국 엣지(SEA/LAX)로 연결되어 사용자↔엣지 구간이 0.4~2초+. 게이트웨이+API는 약 20ms. 배포 중 "시간 초과"는 유실이 아니라 5초 넘는 지연.
+- 발견: 게이트웨이 인증서에 `note.studiobasa.com` 없음 → Cloudflare→원본 TLS 미검증.
+
