@@ -175,7 +175,7 @@ fn holder(current: &CurrentAccount, client_id: &str) -> ApiResult<String> {
     })
 }
 
-fn sha256_hex(content: &str) -> String {
+pub(crate) fn sha256_hex(content: &str) -> String {
     Sha256::digest(content.as_bytes())
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -243,7 +243,7 @@ fn version_conflict(current: i64, deleted: bool) -> ApiError {
 }
 
 /// 계정 사용량 갱신. 늘어나는 경우에만 할당량 검사.
-async fn charge_quota(
+pub(crate) async fn charge_quota(
     tx: &mut Transaction<'_, Postgres>,
     account: Uuid,
     delta: i64,
@@ -511,7 +511,8 @@ pub async fn delete_note(
     }
     charge_quota(&mut tx, current.id, -size).await?;
     sqlx::query(
-        "UPDATE notes SET deleted_at = NOW(), content = '', size_bytes = 0, content_sha256 = $2,
+        "UPDATE notes SET deleted_at = NOW(), trashed_content = content, trashed_size = size_bytes,
+           content = '', size_bytes = 0, content_sha256 = $2,
            version = version + 1, modified_at = NOW(), change_seq = nextval('note_change_seq')
          WHERE id = $1",
     )

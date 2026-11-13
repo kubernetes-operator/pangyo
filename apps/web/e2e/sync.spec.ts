@@ -178,3 +178,29 @@ test('사용 의견(2026-11-13 2차): 기본 프로젝트 이름 바꾸기와 �
   await expect(b.locator('#tree')).not.toContainText('지울 메모', { timeout: 30_000 });
 });
 
+test('휴지통(서버 보관 7일): 지운 동기화 메모를 되살리면 다른 기기에도 돌아옴', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const email = `trash-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+  const a = await deviceFor(browser, email, true);
+  await createNote(a, '되살릴 메모', '소중한 내용');
+  await synced(a);
+  const b = await deviceFor(browser, email, false);
+  await expect(b.locator('#tree')).toContainText('되살릴 메모');
+
+  await openNote(a, '되살릴 메모');
+  await a.locator('#delete-note').click();
+  await a.locator('#confirm-ok').click();
+  await synced(a);
+  await a.locator('#trash-btn').click();
+  const item = a.locator('#trash-server li', { hasText: '되살릴 메모.md' });
+  await expect(item).toContainText('7일 남음');
+  await item.locator('button').click();
+  await expect(a.locator('#trash-status')).toHaveText('되살렸습니다.');
+  await a.locator('#trash-close').click();
+  await expect(a.locator('#tree')).toContainText('되살릴 메모');
+  await openNote(a, '되살릴 메모');
+  await expect(a.locator('#editor')).toHaveValue('소중한 내용');
+  await b.reload();
+  await expect(b.locator('#tree')).toContainText('되살릴 메모', { timeout: 30_000 });
+});
+

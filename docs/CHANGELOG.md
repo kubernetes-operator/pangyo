@@ -263,3 +263,9 @@
 - 지운 항목 1주일 보관(휴지통)·프로젝트 전체 다운로드는 3단계.
 - 테스트: `make check` 통과(Vitest 100, Playwright 26), `make desktop-sync-check` 통과.
 
+## Unreleased — 사용 의견 3차 3단계: 휴지통 1주일 보관, 프로젝트 전체 다운로드 (`feature/trash-and-export`)
+- 변경 파일: `db/postgres/011_trash.sql`(신규: `notes.trashed_content/trashed_size`), `crates/server/src/{trash.rs(신규),notes.rs,config.rs(TRASH_DAYS),lib.rs,main.rs(1시간마다 정리)}`, `crates/server/tests/{trash.rs(신규),api.rs}`, OpenAPI(3개 operation), `apps/web/src/domain/{trash.ts,zip.ts}`(+테스트, 신규), `apps/web/src/{ui/app.ts,ui/main.css,account/api.ts,storage/tauri.ts,settings.ts}`, `apps/web/index.html`, Tauri `save_download`·`/trash` 허용, E2E 2개, docs/05.
+- 휴지통: 지운 메모의 본문을 서버가 7일 보관(다른 기기에는 지금처럼 묘비) → **휴지통**에서 **되살리기**(다른 기기에도 돌아옴). 지운 프로젝트를 되살리면 그 안의 보관 메모도 함께, 지워진 프로젝트의 메모를 되살리면 프로젝트도 함께. 같은 자리에 같은 이름이 있으면 409로 안내. 7일이 지나면 서버가 본문을 비움(1시간마다). 서버에 없던(로그인 전·오프라인) 메모·프로젝트는 이 기기 휴지통(meta `localTrash`)에 7일. 아직 서버에서 지워지지 않은 "삭제 대기" 메모도 휴지통에서 취소 가능. 폴더는 안의 메모를 되살리면 함께 돌아옴.
+- 프로젝트 전체 다운로드: 프로젝트 줄 **전체 다운로드** → `프로젝트이름.zip`(폴더 구조·빈 폴더·한글 이름 그대로, 의존성 없는 무압축 ZIP). 데스크톱·모바일 앱은 OS 다운로드 폴더에 저장하고 경로를 보여 줌.
+- 테스트: 서버 통합 2개(보관·되살리기·용량·경로 충돌·기간 지난 정리 / 프로젝트 되살리기·남의 휴지통 불가), Vitest 105(휴지통 규칙·ZIP), Playwright 28(이 기기 휴지통·ZIP을 Python zipfile로 검증 / 서버 휴지통 두 기기), OpenAPI 39, `make desktop-sync-check` 통과. 앱의 다운로드 폴더 저장은 실기기 확인 필요.
+

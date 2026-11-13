@@ -18,6 +18,8 @@ pub const NOTE_CONTENT_MAX_BYTES: usize = 900 * 1024;
 pub const CHANGES_PAGE_MAX: i64 = 200;
 /// 설치 파일 다운로드 링크 유효 시간
 pub const DOWNLOAD_LINK_TTL_SECS: i64 = 300;
+/// 휴지통 보관 기간(일) 기본값 (2026-11-13 사용 의견: 1주일)
+pub const DEFAULT_TRASH_DAYS: i64 = 7;
 /// 로그인/가입/장비 등록 요청 제한: 같은 IP에서 이 시간 동안 이 횟수까지
 pub const AUTH_RATE_WINDOW: Duration = Duration::from_secs(5 * 60);
 pub const AUTH_RATE_LIMIT: u32 = 20;
@@ -53,6 +55,8 @@ pub struct Config {
     /// `ADMIN_EMAILS` — 관리자 이메일(쉼표 구분, 소문자 정규화). Kubernetes에서는 사용자가 만든 Secret에서 주입.
     /// 비어 있으면 관리자 화면은 아무에게도 열리지 않음
     pub admin_emails: Vec<String>,
+    /// `TRASH_DAYS` — 지운 메모·프로젝트 보관 기간(일)
+    pub trash_days: i64,
 }
 
 impl Default for Config {
@@ -68,6 +72,7 @@ impl Default for Config {
             lease_ttl_secs: DEFAULT_LEASE_TTL_SECS,
             downloads_dir: None,
             admin_emails: Vec::new(),
+            trash_days: DEFAULT_TRASH_DAYS,
         }
     }
 }
@@ -95,6 +100,7 @@ impl Config {
             lease_ttl_secs: num("LEASE_TTL_SECS", d.lease_ttl_secs).max(1),
             downloads_dir: env::var_os("DOWNLOADS_DIR").map(PathBuf::from),
             admin_emails: parse_admin_emails(&env::var("ADMIN_EMAILS").unwrap_or_default()),
+            trash_days: num("TRASH_DAYS", d.trash_days).clamp(1, 365),
         }
     }
 

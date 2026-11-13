@@ -3,7 +3,9 @@ import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
-import { accountApi, ApiError, downloadApi, searchApi, ServerUnavailable, setTransport } from '../account/api';
+import { accountApi, ApiError, downloadApi, searchApi, ServerUnavailable, setTransport, trashApi } from '../account/api';
+import { daysLeft, expiresAtOf, LOCAL_TRASH_META_KEY, pruneTrash, restoredName, TRASH_DAYS, type LocalTrashItem } from '../domain/trash';
+import { createZip, type ZipEntry } from '../domain/zip';
 import type { DeletionChoice } from '../account/device-panel';
 import type { DeviceInfo, ExternalDeletion } from '../storage/tauri';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
@@ -73,6 +75,8 @@ const state = {
   project: DEFAULT_PROJECT,
   /** 기본 프로젝트 표시 이름 (서버 계정 설정, '' = "기본") */
   defaultProjectName: '',
+  /** 서버에 없는 메모·프로젝트의 휴지통 (7일) */
+  localTrash: [] as LocalTrashItem[],
 };
 const DEFAULT_PROJECT_NAME_META_KEY = 'defaultProjectName';
 /** 프로젝트 화면 사용 여부 (ADR-0005: 웹·데스크톱·모바일 모두. 데스크톱은 `@프로젝트` 폴더) */
@@ -1036,11 +1040,195 @@ async function deleteProject(id: string): Promise<void> {
     await repo.deleteFolder(key).catch(console.error);
   state.folders = state.folders.filter((f) => parseFolderKey(f.path).project !== id);
   if (project.sync.synced) project.sync = { ...project.sync, deleting: true };
-  else state.projects = state.projects.filter((p) => p.id !== id);
+  else {
+    state.projects = state.projects.filter((p) => p.id !== id);
+    state.localTrash.push({ kind: 'project', project: { ...project }, deletedAt: nowISO() });
+    await saveLocalTrash();
+  }
   await saveProjects();
   await switchProject(DEFAULT_PROJECT);
   renderProjects();
   void state.sync?.syncOnce();
+}
+
+// === 휴지통 (1주일 보관) ===
+async function saveLocalTrash(): Promise<void> {
+  state.localTrash = pruneTrash(state.localTrash);
+  await repo.setMeta(LOCAL_TRASH_META_KEY, state.localTrash);
+}
+
+function trashRow(text: string, sub: string, onRestore: () => Promise<void>, id: string): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'trash-item';
+  li.dataset.trashId = id;
+  const label = document.createElement('span');
+  label.append(text);
+  const small = document.createElement('small');
+  small.textContent = sub;
+  label.append(document.createElement('br'), small);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = WORDS[state.locale].restore;
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      await onRestore();
+      await renderTrash(WORDS[state.locale].restored);
+    } catch (e) {
+      await renderTrash(e instanceof ApiError ? e.message : String(e));
+    }
+  };
+  li.append(label, button);
+  return li;
+}
+
+async function openTrash(): Promise<void> {
+  const dialog = $<HTMLDialogElement>('trash-dialog');
+  if (!dialog.open) dialog.showModal();
+  await renderTrash();
+}
+
+async function renderTrash(status = ''): Promise<void> {
+  const w = WORDS[state.locale];
+  const dialog = $<HTMLDialogElement>('trash-dialog');
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '', cls = '') => {
+    const n = document.createElement(tag);
+    if (text) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  };
+  const head = el('div', '', 'account-head');
+  const close = el('button', w.close);
+  close.id = 'trash-close';
+  close.onclick = () => dialog.close();
+  head.append(el('h2', w.trash), close);
+  const msg = el('p', status, 'muted');
+  msg.id = 'trash-status';
+  msg.setAttribute('role', 'status');
+  const parts: Node[] = [head, el('p', w.trashHelp.replace('{days}', String(TRASH_DAYS)), 'muted'), msg];
+  const left = (expiresAt: string) => w.daysLeft.replace('{n}', String(daysLeft(expiresAt)));
+  const where = (project: string | null | undefined, folder: string, file: string) =>
+    `${projectName(project ?? '')} · /${folder ? folder + '/' : ''}${file}`;
+
+  // 1) 삭제 대기 (아직 서버에서 지워지지 않음) → 되살리기 = 대기 취소
+  const pending = state.notes.filter((n) => n.sync?.deleting);
+  if (pending.length) {
+    const list = el('ul', '', 'device-list');
+    for (const note of pending)
+      list.append(
+        trashRow(`${note.title}.${note.format}`, where(note.projectId, note.folder, ''), async () => {
+          note.sync = { ...note.sync!, deleting: false };
+          await repo.saveNote(note);
+          displayTree();
+        }, note.id),
+      );
+    parts.push(el('h3', w.trashPending), list);
+  }
+
+  // 2) 서버 보관
+  if (state.sync) {
+    parts.push(el('h3', w.trashServer));
+    try {
+      const trash = await trashApi.list();
+      const list = el('ul', '', 'device-list');
+      list.id = 'trash-server';
+      for (const p of trash.projects)
+        list.append(
+          trashRow(`📁 ${p.name}`, left(p.expiresAt), async () => {
+            await trashApi.restoreProject(p.id);
+            await state.sync?.syncOnce();
+          }, p.id),
+        );
+      for (const n of trash.notes)
+        list.append(
+          trashRow(`${n.title}.${n.format}`, `${where(n.projectId, n.folder, '')} · ${left(n.expiresAt)}`, async () => {
+            await trashApi.restoreNote(n.id);
+            await state.sync?.syncOnce();
+          }, n.id),
+        );
+      if (!list.childElementCount) list.append(el('li', w.trashEmpty, 'muted'));
+      parts.push(list);
+    } catch {
+      parts.push(el('p', w.trashOffline, 'muted'));
+    }
+  }
+
+  // 3) 이 기기 (서버에 없던 항목)
+  state.localTrash = pruneTrash(state.localTrash);
+  parts.push(el('h3', w.trashLocal));
+  const local = el('ul', '', 'device-list');
+  local.id = 'trash-local';
+  for (const item of [...state.localTrash].reverse()) {
+    const expires = expiresAtOf(item.deletedAt);
+    if (item.kind === 'project') {
+      local.append(
+        trashRow(`📁 ${item.project.name}`, left(expires), async () => {
+          const taken = (n: string) => liveProjects().some((p) => p.name.toLocaleLowerCase() === n.toLocaleLowerCase());
+          state.projects.push({ ...item.project, name: restoredName(item.project.name, taken), sync: { synced: false, dirty: true } });
+          state.localTrash = state.localTrash.filter((x) => x !== item);
+          await saveProjects();
+          await saveLocalTrash();
+          renderProjects();
+          void state.sync?.syncOnce();
+        }, item.project.id),
+      );
+    } else {
+      const note = item.note;
+      local.append(
+        trashRow(`${note.title}.${note.format}`, `${where(note.projectId, note.folder, '')} · ${left(expires)}`, async () => {
+          // 프로젝트가 없어졌으면 기본으로, 같은 이름이 있으면 (복구)
+          const project = note.projectId && state.projects.some((p) => p.id === note.projectId && !p.sync.deleting) ? note.projectId : null;
+          const taken = (t: string) =>
+            visibleNotes().some((n) => inProject(n, project ?? '') && n.folder === note.folder && n.title === t && n.format === note.format);
+          const restored: Note = { ...note, projectId: project, title: restoredName(note.title, taken), sync: undefined };
+          state.sync?.markDirty(restored);
+          await repo.saveNote(restored);
+          state.notes.push(restored);
+          state.localTrash = state.localTrash.filter((x) => x !== item);
+          await saveLocalTrash();
+          displayTree();
+        }, note.id),
+      );
+    }
+  }
+  if (!local.childElementCount) local.append(el('li', w.trashEmpty, 'muted'));
+  parts.push(local);
+  dialog.replaceChildren(...parts);
+}
+
+// === 프로젝트 전체 다운로드 (.zip, 폴더 구조 그대로) ===
+async function exportProject(): Promise<void> {
+  const w = WORDS[state.locale];
+  const enc = new TextEncoder();
+  const notes = visibleNotes().filter((n) => inProject(n, state.project));
+  const used = new Set<string>();
+  const entries: ZipEntry[] = [];
+  for (const folder of foldersOf(state.project)) entries.push({ path: folder + '/' });
+  for (const note of notes) {
+    let path = `${note.folder ? note.folder + '/' : ''}${note.title}.${note.format}`;
+    for (let i = 2; used.has(path); i++) path = `${note.folder ? note.folder + '/' : ''}${note.title} (${i}).${note.format}`;
+    used.add(path);
+    entries.push({ path, data: enc.encode(note.content), modified: new Date(note.modifiedAt) });
+  }
+  const name = safeFilename(projectName(state.project)) || 'MemoNest';
+  const zip = createZip(entries);
+  try {
+    if (isTauri()) {
+      const { appApi } = await import('../storage/tauri');
+      const path = await appApi.saveDownload(`${name}.zip`, Array.from(zip));
+      $('project-status').textContent = w.exportSaved.replace('{path}', path);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([zip.buffer as ArrayBuffer], { type: 'application/zip' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2500);
+    $('project-status').textContent = w.exportDone.replace('{name}', name).replace('{n}', String(notes.length));
+  } catch (e) {
+    $('project-status').textContent = w.exportFailed.replace('{error}', String(e));
+  }
 }
 
 /** 메모를 다른 프로젝트로 (폴더 경로는 그대로) */
@@ -1182,8 +1370,10 @@ async function deleteNotes(notes: Note[]): Promise<boolean> {
     } else {
       state.notes = state.notes.filter((n) => n.id !== note.id);
       await repo.deleteNote(note.id);
+      state.localTrash.push({ kind: 'note', note: { ...note, sync: undefined }, deletedAt: nowISO() });
     }
   }
+  await saveLocalTrash();
   if (state.sync && notes.some(synced)) {
     void state.sync.syncOnce().then(() => {
       if (state.notes.some((n) => notes.includes(n) && n.sync?.deleting))
@@ -1649,6 +1839,8 @@ function bindEvents(): void {
     if (value) await renameProject(id, normalizeProjectName(value, state.projects, id));
   };
   $('delete-project').onclick = () => void deleteProject(state.project);
+  $('trash-btn').onclick = () => void openTrash();
+  $('export-project').onclick = () => void exportProject();
   $<HTMLSelectElement>('note-project').onchange = (e) =>
     void moveNoteToProject((e.target as HTMLSelectElement).value);
   $<HTMLSelectElement>('note-folder').onchange = (e) =>
@@ -1762,6 +1954,7 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   if (projectsEnabled()) {
     state.projects = (await repo.getMeta<LocalProject[]>(PROJECTS_META_KEY)) ?? [];
     state.defaultProjectName = (await repo.getMeta<string>(DEFAULT_PROJECT_NAME_META_KEY)) ?? '';
+    state.localTrash = pruneTrash((await repo.getMeta<LocalTrashItem[]>(LOCAL_TRASH_META_KEY)) ?? []);
     const current = (await repo.getMeta<string>(CURRENT_PROJECT_META_KEY)) ?? DEFAULT_PROJECT;
     state.project = state.projects.some((p) => p.id === current && !p.sync.deleting) ? current : DEFAULT_PROJECT;
     $('project-row').hidden = false;

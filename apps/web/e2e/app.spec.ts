@@ -1,5 +1,6 @@
 // === 회귀 테스트: docs/12_TESTPLAN.md T-01 ~ T-06 + v0.1 IndexedDB 데이터 호환 ===
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
 
 // 처음 실행 도움말 창은 e2e/help.spec.ts가 따로 확인 → 여기서는 이미 본 것으로
@@ -292,6 +293,60 @@ test('사용 의견 3차: 트리 메뉴(이름 바꾸기·이동·삭제), 드�
   await expect(page.locator('#confirm-dialog')).toContainText('"임시" 프로젝트와 그 안의 폴더·메모 1개');
   await page.locator('#confirm-ok').click();
   await expect(page.locator('#project-select option')).toHaveText(['기본']);
+});
+
+test('사용 의견 3차: 휴지통(이 기기) 되살리기, 프로젝트 전체 다운로드(.zip)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#add-project').click();
+  await page.locator('#name-input').fill('여행');
+  await page.locator('#name-input').press('Enter');
+  await enterName(page, '#add-folder', '제주');
+  await createNote(page, '일정');
+  await page.locator('#editor').fill('# 3일\n- 한라산');
+  await waitSaved(page);
+  await page.locator('#tree button', { hasText: '▸ /' }).click();
+  await enterName(page, '#add-folder', '빈폴더');
+
+  // 전체 다운로드 → 진짜 ZIP (Python zipfile로 확인), 폴더 구조·한글 이름·빈 폴더
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#export-project').click()]);
+  expect(download.suggestedFilename()).toBe('여행.zip');
+  const file = test.info().outputPath('여행.zip');
+  await download.saveAs(file);
+  const listing = execFileSync('python3', [
+    '-I',
+    '-c',
+    'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({i.filename: (z.read(i).decode() if not i.is_dir() else None) for i in z.infolist()}, ensure_ascii=False))',
+    file,
+  ]).toString();
+  expect(JSON.parse(listing)).toEqual({ '빈폴더/': null, '제주/': null, '제주/일정.md': '# 3일\n- 한라산' });
+
+  // 메모 삭제 → 휴지통(이 기기) → 되살리기
+  await page.locator('#tree button', { hasText: '일정' }).click();
+  await page.locator('#delete-note').click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#tree')).not.toContainText('일정');
+  await page.locator('#trash-btn').click();
+  await expect(page.locator('#trash-dialog')).toContainText('7일 동안 보관');
+  const item = page.locator('#trash-local li', { hasText: '일정.md' });
+  await expect(item).toContainText('7일 남음');
+  await item.locator('button').click();
+  await expect(page.locator('#trash-status')).toHaveText('되살렸습니다.');
+  await page.locator('#trash-close').click();
+  await expect(page.locator('#tree')).toContainText('일정');
+
+  // 프로젝트 삭제(내용 포함) → 프로젝트와 메모 모두 휴지통 → 되살리면 다시 그 프로젝트에
+  await page.locator('#delete-project').click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#project-select option')).toHaveText(['기본']);
+  await page.locator('#trash-btn').click();
+  await page.locator('#trash-local li', { hasText: '📁 여행' }).locator('button').click();
+  await page.locator('#trash-local li', { hasText: '일정.md' }).locator('button').click();
+  await page.locator('#trash-close').click();
+  await page.locator('#project-select').selectOption({ label: '여행' });
+  await expect(page.locator('#tree')).toContainText('일정');
+  await page.reload();
+  await page.locator('#trash-btn').click();
+  await expect(page.locator('#trash-local')).toHaveText('비어 있음');
 });
 
 test('T-03 MD/TXT 다운로드 내용이 UTF-8로 동일', async ({ page }) => {
