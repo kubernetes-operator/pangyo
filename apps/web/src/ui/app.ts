@@ -9,7 +9,8 @@ import type { DeviceInfo, ExternalDeletion } from '../storage/tauri';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
 import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
-import { parseFolder, folderAncestors, safeFilename } from '../domain/paths';
+import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
+import { askName } from './name-dialog';
 import { remember, restore, type HistoryKind } from '../domain/history';
 import {
   indentLines,
@@ -87,16 +88,40 @@ function setLanguage(locale: Locale): void {
   $<HTMLInputElement>('search').placeholder = PLACEHOLDERS[locale].search;
   $<HTMLInputElement>('title').placeholder = PLACEHOLDERS[locale].title;
   if (repo) renderSyncInfo();
+  updateConnectivity();
   editor().placeholder = PLACEHOLDERS[locale].editor;
   repo.setMeta('locale', locale).catch(console.error);
 }
 
 function updateConnectivity(): void {
   $('connectivity').textContent = navigator.onLine ? 'LOCAL · ONLINE' : 'LOCAL · OFFLINE';
-  // 브라우저는 Wi-Fi 종류/BT 및 배터리 정보를 안정적으로 제공하지 않습니다.
-  $('wifi').textContent = navigator.onLine ? 'NET: ONLINE' : 'NET: OFFLINE';
-  $('battery').textContent = 'BAT: --';
-  $('bluetooth').textContent = 'BT: --';
+  // 기기 상태 줄 (요구 09). 브라우저는 Wi-Fi 종류·블루투스 상태를 주지 않음 → '--'.
+  // 배터리는 Battery Status API가 있는 브라우저(Chrome, Android)에서만 표시
+  const w = WORDS[state.locale];
+  $('wifi').textContent = `${w.net}: ${navigator.onLine ? w.online : w.offline}`;
+  $('bluetooth').textContent = `${w.bluetooth}: --`;
+  if (battery.level === null) $('battery').textContent = `${w.battery}: --`;
+  else $('battery').textContent = `${w.battery}: ${Math.round(battery.level * 100)}%${battery.charging ? ' ⚡' : ''}`;
+}
+
+const battery = { level: null as number | null, charging: false };
+type BatteryManager = EventTarget & { level: number; charging: boolean };
+async function watchBattery(): Promise<void> {
+  const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManager> };
+  if (!nav.getBattery) return;
+  try {
+    const b = await nav.getBattery();
+    const update = () => {
+      battery.level = b.level;
+      battery.charging = b.charging;
+      updateConnectivity();
+    };
+    b.addEventListener('levelchange', update);
+    b.addEventListener('chargingchange', update);
+    update();
+  } catch {
+    /* 지원하지 않거나 권한 없음 → '--' 유지 */
+  }
 }
 
 function renderClock(): void {
@@ -667,6 +692,11 @@ async function selectNote(id: string): Promise<void> {
   await flushSave();
   state.selectedId = id;
   state.note = state.notes.find((n) => n.id === id) ?? null;
+  // 강조는 지금 연 메모와 그 메모가 있는 폴더만 (2026-11-13 사용 의견)
+  if (state.note) {
+    state.selectedFolder = state.note.folder;
+    $('folder-path').textContent = '/' + state.note.folder;
+  }
   startSession();
   renderEditor();
   displayTree();
@@ -756,19 +786,42 @@ function toggleFocus(): void {
 }
 
 function bindEvents(): void {
+  const w = () => WORDS[state.locale];
   $('add-note').onclick = async () => {
-    const value = prompt(state.locale === 'ko' ? '새 메모 제목' : 'Note title', 'Untitled');
-    if (value !== null && value.trim()) await addNote(value);
+    const value = await askName({
+      label: w().newNoteTitle,
+      hint: state.selectedFolder ? `${w().saveIn}: /${state.selectedFolder}` : undefined,
+      initial: 'Untitled',
+      ok: w().ok,
+      cancel: w().cancel,
+    });
+    if (value) await addNote(value);
   };
   $('add-folder').onclick = async () => {
-    const value = prompt('폴더명 (예: Work/Project)', state.selectedFolder ? state.selectedFolder + '/' : '');
-    if (value === null) return;
-    try {
-      await addFolder(value);
-    } catch (e) {
-      alert((e as Error).message);
-    }
+    const value = await askName({
+      label: w().newFolderName,
+      hint: w().folderHint,
+      initial: state.selectedFolder ? state.selectedFolder + '/' : '',
+      selectAll: false,
+      ok: w().ok,
+      cancel: w().cancel,
+      validate: (v) => {
+        try {
+          parseFolder(v, SETTINGS.maxFolderDepth);
+          return null;
+        } catch (e) {
+          return e instanceof FolderError ? e.message : String(e);
+        }
+      },
+    });
+    if (value) await addFolder(value);
   };
+  // 제목에서 Enter → 본문으로 이동 (한글 조합 중 Enter는 제외)
+  $<HTMLInputElement>('title').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    editor().focus();
+  });
   $<HTMLInputElement>('title').oninput = (e) =>
     applyEdit('title', safeFilename((e.target as HTMLInputElement).value));
   editor().oninput = (e) => applyEdit('content', (e.target as HTMLTextAreaElement).value);
@@ -874,6 +927,7 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   displayTree();
   renderClock();
   updateConnectivity();
+  void watchBattery();
   bindEvents();
   setInterval(updateTimer, SETTINGS.timerTickMs);
   setInterval(renderClock, SETTINGS.clockTickMs);

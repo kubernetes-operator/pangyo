@@ -48,3 +48,19 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 .related-panel ul{list-style:none;padding:0;margin:4px 0 0;max-height:120px;overflow:auto}
 .related-panel li button{background:none;border:0;padding:3px 0;text-align:left;font-size:12px;width:100%}
 .related-panel li small{display:block;color:var(--muted)}
+
+/* === 사용 의견 반영 (2026-11-13): 장비 추가 안내 강조, 토큰 입력 접기, 이름 입력 창, 정리 영역 설명 === */
+.callout{border:2px solid var(--ink);border-left-width:6px;border-radius:4px;padding:10px 12px;margin:10px 0;background:var(--panel);font-size:13px}
+.callout ol{margin:6px 0 0;padding-left:20px}.callout li{margin:3px 0}
+.token-new summary{cursor:pointer;padding:6px 0;font-size:13px;font-weight:600}
+.token-new[open] summary{margin-bottom:8px}
+.name-dialog{border:1px solid var(--ink);border-radius:6px;padding:16px;width:min(360px,calc(100vw - 32px));background:var(--paper);color:var(--ink)}
+.name-dialog::backdrop{background:rgba(0,0,0,.35)}
+.name-dialog form{display:flex;flex-direction:column;gap:10px}
+.name-dialog label{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.name-dialog input{border:1px solid var(--hairline);border-radius:3px;padding:8px;font-size:14px}
+.name-dialog .hint{font-size:12px;color:var(--muted);margin:0}
+.name-dialog .error{font-size:12px;color:#a00;margin:0;min-height:1em}
+.name-dialog .toolbar{display:flex;justify-content:flex-end;gap:8px}
+.organizer-help summary{cursor:pointer;font-size:12px;color:var(--muted)}
+.organizer-help p{margin:4px 0;font-size:12px;color:var(--muted)}

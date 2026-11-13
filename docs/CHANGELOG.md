@@ -184,3 +184,15 @@
 - 배포(2026-11-13, PR #12 `0b1339f`): rev 12 `sha-0b1339f`, 외부 `/healthz` 60/60 200(대기 15초). 웹 번들에 30초 반영 확인. 설치 파일 재게시(package 실행 43345087269, 7개, 145.1M) → 앱도 30초.
 - 알림 운영 결정(2026-11-13, 사용자): 알림 규칙 7개는 유지, **메일 등 통보(Alertmanager)는 설정하지 않음** — Prometheus Alerts·Grafana "MemoNest" 화면에서 확인.
 
+## Unreleased — 사용 의견 반영 1차 (2026-11-13, `feature/ux-feedback-1`)
+- 변경 파일: `apps/web/src/ui/{app.ts,name-dialog.ts(신규),main.css}`, `apps/web/index.html`, `apps/web/src/settings.ts`, `apps/web/src/account/{panel.ts,device-panel.ts,device-name.test.ts(신규)}`, `apps/web/src/storage/tauri.ts`, `apps/native/src-tauri/{src/lib.rs,Cargo.toml}`(`device_hostname` 명령, whoami — sqlx가 이미 쓰는 크레이트), E2E 3개 파일.
+- 1. 장비 등록 기본 이름: 호스트 이름을 앞에 (`DESKTOP-AB12 (Windows)`). Android는 호스트 이름이 보통 `localhost`라 기기 모델(`SM-S918N (Android)`), 둘 다 없으면 예전 형식.
+- 2. 가입 시 비밀번호 확인 입력(두 번), 다르면 가입하지 않음.
+- 3. n8n 토큰: "새 토큰 만들기"를 눌렀을 때만 입력란 표시 (목록은 항상).
+- 4. 계정 화면에 "장비 추가 방법" 3단계를 강조 상자로 표시.
+- 5. 새 메모/새 폴더: 브라우저 `prompt()` 대신 앱 자체 한 줄 입력 창 — Enter = 만들기(한글 조합 중 Enter 제외), Esc = 취소, 잘못된 폴더는 창 안에 이유 표시(alert 없음). 메모 제목 칸에서 Enter → 본문으로 이동.
+- 7. "0-2 DEPTH" → "폴더 2단계까지", 기기 상태 줄 한글화(배터리·네트워크·블루투스, 배터리는 지원 브라우저·Android에서 % 표시), "표시 설명" 펼침 추가. 하단 "Tree (...)" → "연관 그래프: 준비 중"(요구 22, 미구현).
+- 8. 트리 강조: 메모를 열면 그 메모와 그 메모의 폴더만 강조(예전엔 루트 `/`가 남아 강조됨).
+- 테스트: `make check` 통과(Vitest 84, Playwright 17 — 새 사용 의견 시나리오 1개 추가, 가입 비밀번호 불일치·토큰 입력 접기·장비 추가 안내 검사), `make desktop-sync-check` 7/7, Tauri clippy.
+- 후속: 6. 관리자 화면에서 저장공간 변경(2차), 9. 프로젝트(폴더 위 단계, 설계안 먼저 — 3차).
+

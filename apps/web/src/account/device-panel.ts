@@ -101,11 +101,27 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** 기본 장비 이름. 예: "MemoNest · Windows" */
-export function defaultDeviceName(): string {
-  const ua = navigator.userAgent;
-  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
+/** 이 기기의 OS 이름 (user agent 기준) */
+function osName(ua = navigator.userAgent): string {
+  return /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
     : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
+}
+
+/** Android 기기 모델 (예: "SM-S918N"). user agent의 "Android 14; <모델>" 부분 */
+export function androidModel(ua = navigator.userAgent): string {
+  const m = /Android [^;)]*; ([^;)]+?)(?: Build\/[^;)]*)?[;)]/.exec(ua);
+  const model = m?.[1]?.trim() ?? '';
+  return model && model !== 'K' && !/^wv$/i.test(model) ? model : '';
+}
+
+/**
+ * 기본 장비 이름: 호스트 이름(또는 Android 모델)을 앞에 둠 (2026-11-13 사용 의견).
+ * 예: "DESKTOP-AB12 (Windows)", "SM-S918N (Android)", 둘 다 없으면 "MemoNest · Windows"
+ */
+export function defaultDeviceName(hostname: string | null = null, ua = navigator.userAgent): string {
+  const os = osName(ua);
+  const host = hostname?.trim() || (os === 'Android' ? androidModel(ua) : '');
+  if (host) return os ? `${host} (${os})` : host;
   return os ? `MemoNest · ${os}` : 'MemoNest';
 }
 
@@ -129,10 +145,10 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
   async function render() {
     const info = await deviceApi.status();
     if (info) await renderPaired(info);
-    else renderForm();
+    else await renderForm();
   }
 
-  function renderForm() {
+  async function renderForm() {
     const status = message('', 'error');
     const server = el('input', { type: 'url', id: 'device-server', required: true, placeholder: 'https://', autocomplete: 'off' });
     const code = el('input', {
@@ -143,7 +159,13 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
       autocomplete: 'one-time-code',
       autocapitalize: 'characters',
     });
-    const name = el('input', { type: 'text', id: 'device-name', required: true, maxLength: 80, value: defaultDeviceName() });
+    const name = el('input', {
+      type: 'text',
+      id: 'device-name',
+      required: true,
+      maxLength: 80,
+      value: defaultDeviceName(await deviceApi.hostname()),
+    });
     const submit = el('button', { type: 'submit', className: 'primary', id: 'device-pair' }, t('pair'));
     const form = el(
       'form',
@@ -182,7 +204,7 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
       unpair.disabled = true;
       await hooks.onUnpaired();
       await deviceApi.unpair().catch(console.error);
-      renderForm();
+      await renderForm();
     };
     const deletions = el('ul', { className: 'device-list', id: 'external-deletions' });
     frame(

@@ -22,13 +22,18 @@
     </header>
     <main class="panes">
       <aside class="organizer" id="organizer" aria-label="Organizer">
-        <div class="section-head"><h1 data-i18n="folders">디렉터리</h1><span class="tiny">0-2 DEPTH</span></div>
-        <div class="device-row"><span id="battery">BAT --</span><span id="wifi">NET --</span><span id="bluetooth">BT --</span></div>
+        <div class="section-head"><h1 data-i18n="folders">디렉터리</h1><span class="tiny" id="depth-hint" data-i18n="depthHint">폴더 2단계까지</span></div>
+        <div class="device-row"><span id="battery">배터리: --</span><span id="wifi">네트워크: --</span><span id="bluetooth">블루투스: --</span></div>
+        <details class="organizer-help" id="organizer-help"><summary data-i18n="helpSummary">표시 설명</summary>
+          <p data-i18n="helpDepth">폴더 2단계까지: 폴더 안에 폴더를 한 번 더 만들 수 있습니다(예: 업무/회의). 한 폴더 안의 폴더 개수 제한은 없습니다.</p>
+          <p data-i18n="helpDevice">배터리·네트워크·블루투스: 이 기기의 상태입니다. 브라우저가 알려 주지 않는 값은 --로 표시합니다.</p>
+          <p data-i18n="helpTree">아래 목록: 루트(/) → 폴더 → 메모 순서로 보입니다. 굵게 강조된 것이 지금 연 메모와 그 폴더입니다.</p>
+        </details>
         <div class="toolbar"><button id="add-folder" data-i18n="newFolder">+ 폴더</button><button id="add-note" data-i18n="newNote">+ 메모</button></div>
         <label class="search-wrap"><span data-i18n="search">검색</span><input id="search" type="search" placeholder="제목 또는 본문" autocomplete="off" /></label>
         <div id="tree" class="tree" role="tree" aria-label="Notes"></div>
         <p class="muted" id="folder-path">/</p>
-        <div class="bottom-text"><span data-i18n="trees">Tree (연관 그래프는 서버 연결 후)</span><span id="count">0</span></div>
+        <div class="bottom-text"><span data-i18n="trees">연관 그래프: 준비 중</span><span id="count">0</span></div>
       </aside>
       <section class="writer" id="writer" aria-label="Writer">
         <div class="section-head writer-head"><h1 data-i18n="writing">메모</h1><span id="save-status">LOCAL ONLY</span></div>
