@@ -3,7 +3,7 @@ import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
-import { accountApi, downloadApi, searchApi, ServerUnavailable, setTransport } from '../account/api';
+import { accountApi, ApiError, downloadApi, searchApi, ServerUnavailable, setTransport } from '../account/api';
 import type { DeletionChoice } from '../account/device-panel';
 import type { DeviceInfo, ExternalDeletion } from '../storage/tauri';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
@@ -11,6 +11,7 @@ import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
 import { askConfirm, askName } from './name-dialog';
+import { HELP_MARKDOWN, HELP_TITLE } from './help';
 import { buildLabel, pickUpdate, type UpdateState } from './app-update';
 import {
   CURRENT_PROJECT_META_KEY,
@@ -109,6 +110,7 @@ function setLanguage(locale: Locale): void {
   $<HTMLInputElement>('title').placeholder = PLACEHOLDERS[locale].title;
   if (repo) renderSyncInfo();
   updateConnectivity();
+  renderModeButtons();
   if (repo) renderProjects();
   editor().placeholder = PLACEHOLDERS[locale].editor;
   repo.setMeta('locale', locale).catch(console.error);
@@ -152,6 +154,39 @@ function renderClock(): void {
 function changeMode(mode: Mode): void {
   state.mode = mode;
   document.body.className = `mode-${mode}`;
+  renderModeButtons();
+}
+
+/** 상단 버튼 문구: F6이 지금 무엇을 할지 그대로 보여 줌 (2026-11-13 사용 의견: '집중 모드'·'2패널'이 어려움) */
+function renderModeButtons(): void {
+  const w = WORDS[state.locale];
+  $('toggle-btn').textContent = state.mode === 'editor' ? w.showList : w.showEditor;
+  $('split-btn').hidden = state.mode === 'split';
+}
+
+/** 화면 설정이라 기기(브라우저)마다: localStorage (E2E는 미리 설정해 건너뜀) */
+const HELP_SHOWN_KEY = 'memonest.helpShown';
+function helpShown(): boolean {
+  try {
+    return localStorage.getItem(HELP_SHOWN_KEY) === '1';
+  } catch {
+    return true; // 저장소를 쓸 수 없으면 매번 띄우지 않음
+  }
+}
+function markHelpShown(): void {
+  try {
+    localStorage.setItem(HELP_SHOWN_KEY, '1');
+  } catch {
+    /* 무시 */
+  }
+}
+
+function openHelp(): void {
+  const dialog = $<HTMLDialogElement>('help-dialog');
+  $('help-title').textContent = HELP_TITLE[state.locale];
+  $('help-text').textContent = HELP_MARKDOWN[state.locale];
+  $('help-close').textContent = WORDS[state.locale].close;
+  if (!dialog.open) dialog.showModal();
 }
 
 function selectFolder(folder: string): void {
@@ -166,6 +201,7 @@ function displayTree(): void {
   const query = $<HTMLInputElement>('search').value.toLocaleLowerCase();
   const rows = state.notes.filter(
     (n) =>
+      !n.sync?.deleting &&
       inProject(n, state.project) && (!query || `${n.title} ${n.content}`.toLocaleLowerCase().includes(query)),
   );
   const projectFolders = state.folders
@@ -931,7 +967,7 @@ async function renameProject(id: string, name: string): Promise<void> {
 async function deleteProject(id: string): Promise<void> {
   const project = state.projects.find((p) => p.id === id);
   if (!project) return;
-  const count = state.notes.filter((n) => inProject(n, id)).length;
+  const count = state.notes.filter((n) => inProject(n, id) && !n.sync?.deleting).length;
   if (count) {
     $('project-status').textContent = WORDS[state.locale].projectNotEmpty.replace('{n}', String(count));
     return;
@@ -1056,35 +1092,31 @@ async function deleteCurrentNote(): Promise<void> {
   });
   if (!ok || state.note !== note) return;
   const synced = (note.sync?.version ?? 0) > 0;
-  if (synced) {
-    if (!state.sync) {
-      $('project-status').textContent = w.deleteOffline;
-      return;
-    }
-    let result: string;
-    try {
-      result = await state.sync.deleteRemote(note.id, note.sync!.version);
-    } catch {
-      $('project-status').textContent = w.deleteOffline;
-      return;
-    }
-    if (result === 'busy' || result === 'changed') {
-      $('project-status').textContent = result === 'busy' ? w.deleteBusy : w.deleteChanged;
-      void state.sync.syncOnce();
-      return;
-    }
+  if (synced && !state.sync) {
+    $('project-status').textContent = w.deleteOffline; // 로그인·장비 연결 전에는 서버 기록을 지울 수 없음
+    return;
   }
   releaseEdit();
   endSession();
   await flushSave();
   state.unsaved.delete(note.id);
-  state.notes = state.notes.filter((n) => n.id !== note.id);
-  await repo.deleteNote(note.id);
+  if (synced) {
+    // 삭제 대기: 화면에서 숨기고 동기화가 서버에서 지움. 다른 기기가 열고 있으면 그 기기가 닫을 때까지 기다렸다 자동으로
+    note.sync = { ...note.sync!, deleting: true, conflict: null, error: null };
+    await repo.saveNote(note);
+    void state.sync!.syncOnce().then(() => {
+      if (state.notes.some((n) => n.id === note.id && n.sync?.deleting))
+        $('project-status').textContent = w.deleteQueued;
+    });
+  } else {
+    state.notes = state.notes.filter((n) => n.id !== note.id);
+    await repo.deleteNote(note.id);
+  }
   state.selectedId = null;
   state.note = null;
   state.lease = null;
   const next = state.notes
-    .filter((n) => inProject(n, state.project))
+    .filter((n) => inProject(n, state.project) && !n.sync?.deleting)
     .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))[0];
   if (next) await selectNote(next.id);
   else {
@@ -1239,8 +1271,8 @@ function bindEvents(): void {
         state.defaultProjectName = account.defaultProjectName ?? name;
         await repo.setMeta(DEFAULT_PROJECT_NAME_META_KEY, state.defaultProjectName);
         renderProjects();
-      } catch {
-        $('project-status').textContent = w().needServer;
+      } catch (e) {
+        $('project-status').textContent = e instanceof ApiError ? e.message : w().needServer;
       }
       return;
     }
@@ -1284,6 +1316,12 @@ function bindEvents(): void {
   $('language-btn').onclick = () => setLanguage(state.locale === 'ko' ? 'en' : 'ko');
   $('toggle-btn').onclick = toggleFocus;
   $('split-btn').onclick = () => changeMode('split');
+  $('help-btn').onclick = openHelp;
+  $('help-close').onclick = () => $<HTMLDialogElement>('help-dialog').close();
+  $('help-to-note').onclick = async () => {
+    $<HTMLDialogElement>('help-dialog').close();
+    await addNote(HELP_TITLE[state.locale], HELP_MARKDOWN[state.locale]);
+  };
   // 계정 화면: 웹(서버와 같은 출처). 데스크톱/모바일 앱은 장비 연결 화면(setupDevice)
   if (!isTauri()) {
     const panel = createAccountPanel($<HTMLDialogElement>('account-dialog'), () => state.locale, {
@@ -1383,6 +1421,11 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   updateConnectivity();
   void watchBattery();
   bindEvents();
+  // 처음 실행(메모 없음): 사용법을 먼저 보여 줌 (한 번만)
+  if (!state.notes.length && !helpShown()) {
+    markHelpShown();
+    openHelp();
+  }
   setInterval(updateTimer, SETTINGS.timerTickMs);
   setInterval(renderClock, SETTINGS.clockTickMs);
   // 이미 로그인한 브라우저 / 연결된 장비면 바로 동기화 (서버가 없으면 조용히 로컬 전용)

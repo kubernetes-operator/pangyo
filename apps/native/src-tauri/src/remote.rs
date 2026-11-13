@@ -194,6 +194,14 @@ impl Remote {
                 send_json(with_headers(self.agent.put(url), auth.as_deref(), true), b)
             }
             ("PUT", None) => with_headers(self.agent.put(url), auth.as_deref(), true).send_empty(),
+            // 계정 설정(기본 프로젝트 이름 등) — 2026-11-13 사용자 확인: 앱에서 PATCH가 빠져 실패
+            ("PATCH", Some(b)) => send_json(
+                with_headers(self.agent.patch(url), auth.as_deref(), true),
+                b,
+            ),
+            ("PATCH", None) => {
+                with_headers(self.agent.patch(url), auth.as_deref(), true).send_empty()
+            }
             _ => return Err(format!("지원하지 않는 요청: {method}")),
         };
         let mut response = result.map_err(|e| format!("{OFFLINE_PREFIX} {e}"))?;

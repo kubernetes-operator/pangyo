@@ -8,6 +8,9 @@ import type { Note, NoteFormat, NoteSync, ServerCopy } from '../domain/types';
 import type { LocalProject } from '../domain/projects';
 
 // === 0. 동기화 정책 변수 ===
+/** 삭제 대기 중 다른 기기에서 고쳐져 삭제를 취소했을 때 메모에 남기는 안내 */
+export const DELETE_CANCELLED = '지우려던 사이 다른 기기에서 고쳐져 지우지 않았습니다.';
+
 export const SYNC_SETTINGS = Object.freeze({
   pushDebounceMs: 1_500, // 입력이 멈춘 뒤 올리기까지 대기
   leaseRenewFraction: 1 / 3, // 임대 유지 시간의 1/3마다 갱신
@@ -230,7 +233,7 @@ export class SyncEngine {
     this.lastStatus = {
       phase,
       pending:
-        notes.filter((n) => n.sync?.dirty).length +
+        notes.filter((n) => n.sync?.dirty || n.sync?.deleting).length +
         (this.store.projects?.list().filter((p) => p.sync.dirty || p.sync.deleting).length ?? 0),
       conflicts: notes.filter((n) => n.sync?.conflict).length,
       message,
@@ -280,6 +283,12 @@ export class SyncEngine {
     }
     const sync: NoteSync = local.sync ?? { version: 0, dirty: true };
     if (server.version <= sync.version) return; // 이미 반영됨 (내가 올린 결과 등)
+    if (sync.deleting && !server.deleted) {
+      // 지우려던 사이 다른 기기에서 고쳐짐 → 지우지 않고 최신 내용을 받음
+      local.sync = { version: sync.version, dirty: false, error: DELETE_CANCELLED };
+      sync.deleting = false;
+      sync.dirty = false;
+    }
     if (sync.dirty) {
       if (!server.deleted && snapshotOf(local) === snapshotOf(server)) {
         local.sync = { version: server.version, dirty: false }; // 결과가 같으면 충돌 아님
@@ -376,8 +385,11 @@ export class SyncEngine {
   async push(): Promise<void> {
     const projects = this.store.projects;
     if (projects) await this.pushProjects(projects, 'upsert');
-    const targets = this.store.list().filter((n) => n.sync?.dirty && !n.sync.conflict && !n.sync.error);
+    const targets = this.store
+      .list()
+      .filter((n) => n.sync?.dirty && !n.sync.deleting && !n.sync.conflict && !n.sync.error);
     for (const note of targets) await this.pushNote(note);
+    for (const note of this.store.list().filter((n) => n.sync?.deleting)) await this.pushDelete(note);
     if (projects) await this.pushProjects(projects, 'delete');
   }
 
@@ -435,6 +447,26 @@ export class SyncEngine {
       if (temporaryLease) await this.release(note.id);
     }
     await this.store.save(note);
+    this.store.changed([note.id]);
+  }
+
+  /** 삭제 대기 메모를 서버에서 지움. 다른 기기가 열고 있으면 다음 동기화 때 다시 (2026-11-13 사용자 확인) */
+  private async pushDelete(note: Note): Promise<void> {
+    const sync = note.sync!;
+    if (sync.version <= 0) {
+      await this.store.remove(note.id); // 서버에 없음 → 이 기기에서만
+      this.store.changed([note.id]);
+      return;
+    }
+    const result = await this.deleteRemote(note.id, sync.version);
+    if (result === 'deleted' || result === 'gone') {
+      await this.store.remove(note.id);
+    } else if (result === 'changed') {
+      note.sync = { version: sync.version, dirty: false, error: DELETE_CANCELLED };
+      await this.store.save(note);
+    } else {
+      return; // busy: 다른 기기가 편집 중 → 대기 유지
+    }
     this.store.changed([note.id]);
   }
 

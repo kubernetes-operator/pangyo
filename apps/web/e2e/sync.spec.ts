@@ -6,6 +6,7 @@ const PASSWORD = 'correct horse battery';
 /** 새 브라우저 컨텍스트(= 다른 기기)에서 로그인한 페이지 */
 async function deviceFor(browser: Browser, email: string, register: boolean): Promise<Page> {
   const context = await browser.newContext({ locale: 'ko-KR' });
+  await context.addInitScript(() => localStorage.setItem('memonest.helpShown', '1')); // 도움말은 help.spec.ts
   const page = await context.newPage();
   await page.goto('/');
   const status = await page.evaluate(

@@ -1,6 +1,11 @@
 // === 계정 E2E (로드맵 05): 실제 Rust 서버 + Postgres, 서버가 웹 앱도 제공하는 배포 구조 그대로 ===
 import { expect, test } from '@playwright/test';
 
+// 처음 실행 도움말 창은 e2e/help.spec.ts가 따로 확인 → 여기서는 이미 본 것으로
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('memonest.helpShown', '1'));
+});
+
 const PASSWORD = 'correct horse battery';
 
 test('가입 → 계정·용량 표시 → 장비 등록 코드 → 로그아웃 → 틀린 비밀번호 → 다시 로그인', async ({ page }) => {

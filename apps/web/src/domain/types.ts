@@ -39,6 +39,8 @@ export interface NoteSync {
   dirty: boolean; // 올리지 않은 로컬 변경 (오프라인 초안 포함)
   conflict?: ServerCopy | null; // 로컬 변경 중 서버에서도 바뀐 경우: 사용자가 고를 때까지 보관
   error?: string | null; // 서버가 거부한 이유 (경로 중복, 용량 등). 다시 편집하면 지움
+  /** 삭제 대기: 화면에서는 숨기고, 서버에서 지워지면 이 기기에서도 지움 (다른 기기가 열고 있거나 오프라인일 때) */
+  deleting?: boolean;
 }
 
 export interface Note extends Snapshot {
