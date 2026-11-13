@@ -225,6 +225,32 @@ export const adminApi = {
     request<AdminAccount>('PUT', `/admin/accounts/${encodeURIComponent(id)}/quota`, { quotaMb }),
 };
 
+export interface TrashNote {
+  id: string;
+  title: string;
+  folder: string;
+  format: 'md' | 'txt';
+  projectId: string | null;
+  sizeBytes: number;
+  deletedAt: string;
+  expiresAt: string;
+}
+export interface TrashProject {
+  id: string;
+  name: string;
+  deletedAt: string;
+  expiresAt: string;
+}
+
+/** 휴지통 (서버 보관, 기본 7일) */
+export const trashApi = {
+  list: () => request<{ notes: TrashNote[]; projects: TrashProject[]; retentionDays: number }>('GET', '/trash'),
+  restoreNote: (id: string) =>
+    request<{ restoredNotes: number; restoredProjects: number }>('POST', `/notes/${encodeURIComponent(id)}/restore`),
+  restoreProject: (id: string) =>
+    request<{ restoredNotes: number; restoredProjects: number }>('POST', `/projects/${encodeURIComponent(id)}/restore`),
+};
+
 /** 104857600 → '100 MB' */
 export function formatBytes(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

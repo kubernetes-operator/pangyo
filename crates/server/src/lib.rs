@@ -18,6 +18,7 @@ pub mod notes;
 pub mod projects;
 pub mod search;
 pub mod security;
+pub mod trash;
 
 use std::{
     sync::{Arc, OnceLock},
@@ -233,6 +234,13 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/notes/{id}/lease",
             post(notes::acquire_lease).delete(notes::release_lease),
+        )
+        // 휴지통 (1주일 보관)
+        .route("/api/v1/trash", get(trash::list))
+        .route("/api/v1/notes/{id}/restore", post(trash::restore_note))
+        .route(
+            "/api/v1/projects/{id}/restore",
+            post(trash::restore_project),
         )
         // 프로젝트 (ADR-0005)
         .route("/api/v1/projects", get(projects::list))

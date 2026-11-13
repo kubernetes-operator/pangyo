@@ -32,6 +32,23 @@ async fn main() -> std::io::Result<()> {
             }
         });
     }
+    // 휴지통: 보관 기간이 지난 메모 본문을 한 시간마다 비움 (DB 연결 전이면 다음 번에)
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+            loop {
+                every.tick().await;
+                if let Ok(db) = state.db() {
+                    match memonest_server::trash::purge(db, state.config.trash_days).await {
+                        Ok(0) => {}
+                        Ok(n) => tracing::info!(purged = n, "trash purged"),
+                        Err(e) => tracing::warn!(error = %e, "trash purge failed"),
+                    }
+                }
+            }
+        });
+    }
     let addr = env::var(BIND_ENV).unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_owned());
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(

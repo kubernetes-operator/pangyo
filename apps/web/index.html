@@ -31,6 +31,8 @@
           <button id="add-project" type="button" data-i18n="newProject">+ 프로젝트</button>
           <button id="rename-project" type="button" data-i18n="renameProject">이름 바꾸기</button>
           <button id="delete-project" type="button" data-i18n="deleteProject">삭제</button>
+          <button id="export-project" type="button" data-i18n="exportProject">전체 다운로드</button>
+          <button id="trash-btn" type="button" data-i18n="trash">휴지통</button>
           <p class="tiny" id="project-status" role="status"></p>
         </div>
         <div class="device-row"><span id="battery">배터리: --</span><span id="wifi">네트워크: --</span><span id="bluetooth">블루투스: --</span></div>
@@ -68,6 +70,7 @@
     </main>
   </div>
   <dialog id="account-dialog" class="account-dialog" aria-label="Account"></dialog>
+  <dialog id="trash-dialog" class="account-dialog" aria-label="Trash"></dialog>
   <dialog id="help-dialog" class="account-dialog help-dialog" aria-label="Help">
     <div class="account-head"><h2 id="help-title">MemoNest 사용법</h2><button type="button" id="help-close">닫기</button></div>
     <pre id="help-text" class="help-text"></pre>

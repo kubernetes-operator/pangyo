@@ -97,3 +97,6 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 .tree-menu button{border:0;text-align:left;background:transparent;padding:8px 10px;font-size:13px}
 .tree-menu button:hover,.tree-menu button:focus-visible{background:#eee}
 .tree-menu .danger-text{color:#a00}
+/* 휴지통 (1주일 보관) */
+.trash-item{gap:8px}
+.trash-item small{color:var(--muted)}

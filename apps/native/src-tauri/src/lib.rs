@@ -170,6 +170,30 @@ async fn open_download(
         .map_err(|e| e.to_string())
 }
 
+/// 내보낸 파일(프로젝트 전체 다운로드 .zip)을 OS 다운로드 폴더에 저장. 같은 이름이 있으면 " (2)"를 붙임.
+/// 이름은 파일 이름만(경로 없이) 받으며, 저장한 전체 경로를 돌려줌
+#[tauri::command]
+fn save_download(app: tauri::AppHandle, file_name: String, data: Vec<u8>) -> CommandResult<String> {
+    let name = memonest_core::safe_filename(
+        file_name
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("MemoNest.zip"),
+    );
+    let (stem, ext) = name.rsplit_once('.').unwrap_or((name.as_str(), "zip"));
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut target = dir.join(format!("{stem}.{ext}"));
+    for i in 2.. {
+        if !target.exists() {
+            break;
+        }
+        target = dir.join(format!("{stem} ({i}).{ext}"));
+    }
+    std::fs::write(&target, data).map_err(|e| e.to_string())?;
+    Ok(target.display().to_string())
+}
+
 /// 장비 등록 화면의 기본 장비 이름에 쓸 호스트 이름 (2026-11-13 사용 의견: 내 기기 이름이 먼저 보이게).
 /// 알 수 없거나 의미 없는 값(localhost 등, Android에서 흔함)이면 None → 화면이 기기 모델/OS로 대신 채움
 #[tauri::command]
@@ -282,6 +306,7 @@ pub fn run() {
             device_hostname,
             app_info,
             open_download,
+            save_download,
             device_pair,
             device_unpair,
             server_request

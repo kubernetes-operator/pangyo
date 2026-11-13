@@ -16,13 +16,14 @@ use serde_json::Value;
 /// API 경로 접두사 (서버 crates/server/src/lib.rs와 같음)
 const API_PREFIX: &str = "/api/v1";
 /// 화면이 이 명령으로 부를 수 있는 API 경로 (장비 토큰으로 쓸 일만. 계정·장비 관리는 웹에서)
-const ALLOWED_PATHS: [&str; 6] = [
+const ALLOWED_PATHS: [&str; 7] = [
     "/notes",
     "/projects",
     "/search",
     "/account",
     "/info",
     "/downloads",
+    "/trash",
 ]; // /projects: ADR-0005, /downloads: 앱 안 업데이트
 /// 상태를 바꾸는 요청에 붙이는 CSRF 방지 헤더 (서버 security.rs CSRF_HEADER)
 const CSRF_HEADER: (&str, &str) = ("X-MemoNest-Request", "1");

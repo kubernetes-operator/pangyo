@@ -26,6 +26,7 @@ export const COMMANDS = {
   // 앱 안 업데이트 (A안)
   appInfo: 'app_info',
   openDownload: 'open_download',
+  saveDownload: 'save_download',
   devicePair: 'device_pair',
   deviceUnpair: 'device_unpair',
   serverRequest: 'server_request',
@@ -72,6 +73,8 @@ export class DeviceError extends Error {
 export const appApi = {
   info: () => invoke<import('../ui/app-update').AppInfo>(COMMANDS.appInfo),
   openDownload: (url: string) => invoke<void>(COMMANDS.openDownload, { url }),
+  /** 내보낸 파일(프로젝트 .zip)을 OS 다운로드 폴더에 저장 → 저장한 경로 */
+  saveDownload: (fileName: string, data: number[]) => invoke<string>(COMMANDS.saveDownload, { fileName, data }),
 };
 
 export const deviceApi = {

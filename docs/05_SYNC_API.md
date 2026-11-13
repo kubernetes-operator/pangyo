@@ -20,6 +20,9 @@
 | `GET /api/v1/projects` | 프로젝트 목록 (ADR-0005, 메모 `projectId` null = 기본) | notes:read |
 | `PUT /api/v1/projects/{id}` | 프로젝트 만들기·이름 바꾸기 (ID는 클라이언트가 정함) | notes:write |
 | `DELETE /api/v1/projects/{id}` | 빈 프로젝트 삭제 (메모가 있으면 409) | notes:write |
+| `GET /api/v1/trash` | 휴지통: 보관 기간(기본 7일, `TRASH_DAYS`) 안의 지운 메모·프로젝트 | notes:read |
+| `POST /api/v1/notes/{id}/restore` | 메모 되살리기 (지워진 프로젝트면 함께) | notes:write |
+| `POST /api/v1/projects/{id}/restore` | 프로젝트와 그 안의 보관 메모 되살리기 | notes:write |
 | `GET/PUT /api/v1/admin/settings` | 기본 저장공간 조회·변경 (따로 정하지 않은 계정에 바로 적용) | 관리자(ADMIN_EMAILS) |
 | `GET /api/v1/admin/accounts` | 계정 목록·사용량·용량 | 관리자 |
 | `PUT /api/v1/admin/accounts/{id}/quota` | 계정별 저장공간 (`null` = 기본값으로) | 관리자 |
