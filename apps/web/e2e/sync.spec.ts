@@ -152,3 +152,28 @@ test('프로젝트(ADR-0005): 한 기기에서 만든 프로젝트와 그 메모
   await expect(b.locator('#project-select option')).toHaveText(['기본', '제주 여행'], { timeout: 30_000 });
 });
 
+test('사용 의견(2026-11-13 2차): 기본 프로젝트 이름 바꾸기와 메모 삭제가 다른 기기에도', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const email = `del-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+  const a = await deviceFor(browser, email, true);
+  await createNote(a, '지울 메모', '곧 지움');
+  await synced(a);
+  // 기본 프로젝트 이름 바꾸기 (서버 계정 설정)
+  await expect(a.locator('#rename-project')).toBeEnabled();
+  await a.locator('#rename-project').click();
+  await a.locator('#name-input').fill('일상');
+  await a.locator('#name-input').press('Enter');
+  await expect(a.locator('#project-select option:checked')).toHaveText('일상');
+
+  const b = await deviceFor(browser, email, false);
+  await expect(b.locator('#project-select option:checked')).toHaveText('일상', { timeout: 15_000 });
+  await expect(b.locator('#tree')).toContainText('지울 메모');
+
+  await openNote(a, '지울 메모');
+  await a.locator('#delete-note').click();
+  await a.locator('#confirm-ok').click();
+  await expect(a.locator('#tree')).not.toContainText('지울 메모');
+  await b.reload();
+  await expect(b.locator('#tree')).not.toContainText('지울 메모', { timeout: 30_000 });
+});
+

@@ -91,3 +91,43 @@ export function askName(opts: NameDialogOptions): Promise<string | null> {
     else input.select();
   });
 }
+
+/** 확인 창 (브라우저 confirm()은 앱 웹뷰에서 동작하지 않을 수 있어 직접 그림). 확인 = true */
+export function askConfirm(opts: { message: string; ok: string; cancel: string; danger?: boolean }): Promise<boolean> {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'name-dialog';
+  dialog.id = 'confirm-dialog';
+  const form = document.createElement('form');
+  const text = document.createElement('p');
+  text.textContent = opts.message;
+  const ok = document.createElement('button');
+  ok.type = 'submit';
+  ok.className = opts.danger ? 'primary danger' : 'primary';
+  ok.id = 'confirm-ok';
+  ok.textContent = opts.ok;
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.id = 'confirm-cancel';
+  cancel.textContent = opts.cancel;
+  const bar = document.createElement('div');
+  bar.className = 'toolbar';
+  bar.append(cancel, ok);
+  form.append(text, bar);
+  dialog.append(form);
+  document.body.append(dialog);
+  return new Promise((resolve) => {
+    let result = false;
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(result);
+    });
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      result = true;
+      dialog.close();
+    });
+    dialog.showModal();
+    cancel.focus(); // 실수로 Enter를 눌러도 지우지 않게
+  });
+}

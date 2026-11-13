@@ -1033,6 +1033,66 @@
             "device": []
           }
         ]
+      },
+      "patch": {
+        "summary": "계정 설정 바꾸기 (기본 프로젝트 표시 이름, ''이면 화면 기본값)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/devices": {
@@ -2284,7 +2344,8 @@
           "quotaBytes",
           "usedBytes",
           "createdAt",
-          "isAdmin"
+          "isAdmin",
+          "defaultProjectName"
         ],
         "properties": {
           "id": {
@@ -2326,6 +2387,10 @@
           "isAdmin": {
             "type": "boolean",
             "description": "관리자 화면 표시 여부 (ADMIN_EMAILS)"
+          },
+          "defaultProjectName": {
+            "type": "string",
+            "description": "기본 프로젝트 표시 이름 ('' = 화면 기본값, ADR-0005)"
           }
         }
       },
@@ -2477,6 +2542,10 @@
               "$ref": "#/components/schemas/Project"
             },
             "description": "projects=1일 때만 채움: 바뀐 프로젝트(묘비 포함)"
+          },
+          "defaultProjectName": {
+            "type": "string",
+            "description": "projects=1일 때만: 기본 프로젝트 표시 이름"
           }
         }
       },
@@ -2921,6 +2990,16 @@
             "type": "string"
           }
         }
+      },
+      "AccountUpdate": {
+        "type": "object",
+        "properties": {
+          "defaultProjectName": {
+            "type": "string",
+            "description": "프로젝트 이름 규칙, ''이면 화면 기본값"
+          }
+        },
+        "required": []
       }
     },
     "securitySchemes": {

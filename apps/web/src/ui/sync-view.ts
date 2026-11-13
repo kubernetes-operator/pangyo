@@ -8,7 +8,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     off: '동기화 꺼짐',
     synced: '동기화됨',
     syncing: '동기화 중…',
-    pending: '올릴 메모 {n}',
+    pending: '올릴 변경 {n}',
     offline: '오프라인 · 초안 {n}',
     conflicts: '충돌 {n}',
     error: '동기화 오류',

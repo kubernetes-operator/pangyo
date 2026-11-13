@@ -13,6 +13,9 @@ export const SYNC_SETTINGS = Object.freeze({
   leaseRenewFraction: 1 / 3, // 임대 유지 시간의 1/3마다 갱신
   leaseSafetyMs: 5_000, // 만료 이만큼 전이면 저장 전에 미리 갱신
   cursorMetaKey: 'syncCursor', // 마지막으로 받은 변경 커서 (계정별 기기 저장)
+  // 프로젝트를 알게 된 뒤 처음 한 번은 처음부터 다시 받음: 예전 버전일 때 건너뛴 프로젝트와
+  // (예전 클라이언트에 묘비로 보내져 지워진) 다른 프로젝트 메모를 되찾기 위해 (ADR-0005, 2026-11-13 사용자 확인)
+  projectsAwareMetaKey: 'syncProjectsAware',
 });
 
 export interface ServerNote {
@@ -52,7 +55,14 @@ export interface SyncApi {
   changes(
     since: number,
     projects?: boolean,
-  ): Promise<{ notes: ServerNote[]; projects?: ServerProject[]; cursor: number; hasMore: boolean }>;
+  ): Promise<{
+    notes: ServerNote[];
+    projects?: ServerProject[];
+    /** 기본 프로젝트 표시 이름 (projects=1일 때, 비어 있으면 화면 기본값) */
+    defaultProjectName?: string;
+    cursor: number;
+    hasMore: boolean;
+  }>;
   putProject?(id: string, name: string): Promise<ServerProject>;
   deleteProject?(id: string): Promise<ServerProject>;
   get(id: string): Promise<ServerNote>;
@@ -91,6 +101,8 @@ export interface ProjectStore {
   remove(id: string): Promise<void>;
   /** 목록이 바뀌었으니 다시 그리기 */
   changed(): void;
+  /** 서버의 기본 프로젝트 표시 이름 반영 */
+  setDefaultName?(name: string): Promise<void>;
 }
 
 /** 서버 오류 분류 (sync/api.ts가 ApiError/ServerUnavailable을 이 모양으로 전달) */
@@ -151,6 +163,7 @@ export class SyncEngine {
   private running: Promise<void> | null = null;
   private pushTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
+  private resyncing = false;
   private lastStatus: SyncStatus = { phase: 'idle', pending: 0, conflicts: 0 };
 
   constructor(
@@ -166,6 +179,10 @@ export class SyncEngine {
 
   async init(): Promise<void> {
     this.cursor = (await this.store.getMeta<number>(SYNC_SETTINGS.cursorMetaKey)) ?? 0;
+    if (this.store.projects && !(await this.store.getMeta<boolean>(SYNC_SETTINGS.projectsAwareMetaKey))) {
+      this.cursor = 0; // 이미 받은 메모는 버전이 같아 다시 쓰지 않음
+      this.resyncing = true;
+    }
   }
 
   status(): SyncStatus {
@@ -212,7 +229,9 @@ export class SyncEngine {
     const notes = this.store.list();
     this.lastStatus = {
       phase,
-      pending: notes.filter((n) => n.sync?.dirty).length,
+      pending:
+        notes.filter((n) => n.sync?.dirty).length +
+        (this.store.projects?.list().filter((p) => p.sync.dirty || p.sync.deleting).length ?? 0),
       conflicts: notes.filter((n) => n.sync?.conflict).length,
       message,
     };
@@ -228,7 +247,13 @@ export class SyncEngine {
       for (const server of page.notes) await this.apply(server);
       this.cursor = page.cursor;
       await this.store.setMeta(SYNC_SETTINGS.cursorMetaKey, this.cursor);
+      if (page.defaultProjectName !== undefined && projects?.setDefaultName)
+        await projects.setDefaultName(page.defaultProjectName);
       if (!page.hasMore) break;
+    }
+    if (this.resyncing) {
+      this.resyncing = false;
+      await this.store.setMeta(SYNC_SETTINGS.projectsAwareMetaKey, true);
     }
   }
 

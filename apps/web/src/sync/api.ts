@@ -22,7 +22,13 @@ const notePath = (id: string) => `/notes/${encodeURIComponent(id)}`;
 export const syncApi: SyncApi = {
   changes: (since, projects) =>
     call(() =>
-      request<{ notes: ServerNote[]; projects?: ServerProject[]; cursor: number; hasMore: boolean }>(
+      request<{
+        notes: ServerNote[];
+        projects?: ServerProject[];
+        defaultProjectName?: string;
+        cursor: number;
+        hasMore: boolean;
+      }>(
         'GET',
         `/notes?since=${since}${projects ? '&projects=1' : ''}`,
       ),
