@@ -132,3 +132,57 @@ test('설치 파일: 로그인하면 목록이 보이고, 받기를 누르면 �
   const { readFile } = await import('node:fs/promises');
   expect(await readFile((await file.path())!, 'utf8')).toBe('MemoNest e2e test installer\n');
 });
+
+test('관리자(ADMIN_EMAILS): 시스템 영역에서 기본 저장공간 저장, 계정별 저장공간 적용·기본값으로', async ({ page }) => {
+  const email = 'e2e-admin@example.com';
+  await page.goto('/');
+  // 같은 테스트 DB를 다시 쓰면 이미 가입돼 있으므로 로그인
+  await page.evaluate(
+    async ([email, password]) => {
+      const post = (path: string) =>
+        fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-MemoNest-Request': '1' },
+          body: JSON.stringify({ email, password }),
+        });
+      if ((await post('/api/v1/auth/register')).status === 409) await post('/api/v1/auth/login');
+    },
+    [email, PASSWORD],
+  );
+  await page.reload();
+  await page.locator('#account-btn').click();
+  const dialog = page.locator('#account-dialog');
+  const input = dialog.locator('#admin-default-quota');
+  await expect(input).toHaveValue(/^\d+$/);
+  // 다른 테스트와 같은 DB를 쓰므로 기본값은 지금 값 그대로 저장(값 변경 확인은 서버 통합 테스트)
+  const current = await input.inputValue();
+  await dialog.locator('#admin-default-save').click();
+  await expect(dialog.locator('#admin-status')).toContainText('바로 적용했습니다');
+  await expect(input).toHaveValue(current);
+
+  const mine = dialog.locator('#admin-accounts li', { hasText: email });
+  await mine.locator('input').fill('123');
+  await mine.locator('button', { hasText: '적용' }).click();
+  await expect(dialog.locator('#admin-accounts li', { hasText: email })).toContainText('123 MB · 따로 정함');
+  await dialog.locator('#admin-accounts li', { hasText: email }).locator('button', { hasText: '기본값으로' }).click();
+  await expect(dialog.locator('#admin-accounts li', { hasText: email })).not.toContainText('따로 정함');
+});
+
+test('관리자가 아니면 시스템 영역이 없음', async ({ page }) => {
+  const email = `e2e-plain-${Date.now()}@example.com`;
+  await page.goto('/');
+  await page.evaluate(
+    async ([email, password]) =>
+      fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-MemoNest-Request': '1' },
+        body: JSON.stringify({ email, password }),
+      }),
+    [email, PASSWORD],
+  );
+  await page.reload();
+  await page.locator('#account-btn').click();
+  await expect(page.locator('#account-email')).toContainText(email);
+  await expect(page.locator('#admin-default-quota')).toHaveCount(0);
+});
+

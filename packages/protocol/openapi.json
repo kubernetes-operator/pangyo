@@ -1537,6 +1537,263 @@
           }
         }
       }
+    },
+    "/api/v1/admin/settings": {
+      "get": {
+        "summary": "관리자: 기본 저장공간 조회 (ADMIN_EMAILS의 계정만)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "관리자: 기본 저장공간 변경 — 따로 정하지 않은 모든 계정에 바로 적용",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/accounts": {
+      "get": {
+        "summary": "관리자: 계정 목록 (사용량·용량)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccountList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/accounts/{id}/quota": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "summary": "관리자: 계정별 저장공간 (quotaMb=null이면 기본값으로)",
+        "x-memonest-status": "implemented",
+        "x-requires-database": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CsrfHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuotaUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "오류 (error 코드 참고)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1714,7 +1971,10 @@
               "invalid_query",
               "downloads_unavailable",
               "download_not_found",
-              "link_invalid"
+              "link_invalid",
+              "admin_only",
+              "invalid_quota",
+              "account_not_found"
             ]
           },
           "message": {
@@ -1795,7 +2055,8 @@
           "tier",
           "quotaBytes",
           "usedBytes",
-          "createdAt"
+          "createdAt",
+          "isAdmin"
         ],
         "properties": {
           "id": {
@@ -1833,6 +2094,10 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "isAdmin": {
+            "type": "boolean",
+            "description": "관리자 화면 표시 여부 (ADMIN_EMAILS)"
           }
         }
       },
@@ -2258,6 +2523,112 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "AdminSettings": {
+        "type": "object",
+        "required": [
+          "defaultQuotaMb",
+          "envDefaultQuotaMb",
+          "updatedAccounts"
+        ],
+        "properties": {
+          "defaultQuotaMb": {
+            "type": "integer",
+            "description": "지금 적용 중인 기본 용량(MB)"
+          },
+          "envDefaultQuotaMb": {
+            "type": "integer",
+            "description": "화면에서 정하지 않았을 때의 서버 설정값(FREE_STORAGE_MB)"
+          },
+          "updatedAccounts": {
+            "type": "integer",
+            "description": "PUT으로 용량이 바뀐 계정 수"
+          }
+        }
+      },
+      "AdminSettingsUpdate": {
+        "type": "object",
+        "required": [
+          "defaultQuotaMb"
+        ],
+        "properties": {
+          "defaultQuotaMb": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1048576
+          }
+        }
+      },
+      "AdminAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "displayName",
+          "usedBytes",
+          "quotaBytes",
+          "quotaCustom",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "usedBytes": {
+            "type": "integer"
+          },
+          "quotaBytes": {
+            "type": "integer"
+          },
+          "quotaCustom": {
+            "type": "boolean",
+            "description": "계정별로 따로 정한 용량이면 true (기본값 변경의 영향 없음)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AdminAccountList": {
+        "type": "object",
+        "required": [
+          "accounts"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAccount"
+            }
+          }
+        }
+      },
+      "QuotaUpdate": {
+        "type": "object",
+        "required": [
+          "quotaMb"
+        ],
+        "properties": {
+          "quotaMb": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1048576
           }
         }
       }

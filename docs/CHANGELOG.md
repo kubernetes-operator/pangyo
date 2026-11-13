@@ -196,3 +196,11 @@
 - 테스트: `make check` 통과(Vitest 84, Playwright 17 — 새 사용 의견 시나리오 1개 추가, 가입 비밀번호 불일치·토큰 입력 접기·장비 추가 안내 검사), `make desktop-sync-check` 7/7, Tauri clippy.
 - 후속: 6. 관리자 화면에서 저장공간 변경(2차), 9. 프로젝트(폴더 위 단계, 설계안 먼저 — 3차).
 
+## Unreleased — 사용 의견 6번: 관리자 화면에서 저장공간 변경 (`feature/admin-quota`)
+- 변경 파일: `crates/server/src/{admin.rs(신규),accounts.rs,config.rs,lib.rs}`, `db/postgres/008_admin_settings.sql`(신규: `system_settings`, `accounts.quota_custom`), `crates/server/tests/{admin.rs(신규),api.rs}`, OpenAPI(관리자 4개 operation, `Account.isAdmin`), 웹 `account/{api.ts,panel.ts}`·`main.css`, Playwright 설정·E2E, Helm 0.4.0(`admin.existingSecret` → `ADMIN_EMAILS`, optional), 문서(05, 13, infra README).
+- 관리자: `ADMIN_EMAILS`의 이메일로 로그인한 계정(자동화 토큰 불가). **관리자 이메일은 저장소·values에 넣지 않고 사용자가 만든 Secret `memonest-admin`에서 읽음**(조직 규칙: 개인정보 저장 금지). Secret이 없으면 아무도 관리자가 아님.
+- 웹 계정 화면 **시스템(관리자)**: 계정당 기본 저장공간(MB) 저장 → 따로 정하지 않은 모든 계정에 즉시 적용(기존 계정 포함), 계정 목록(사용량/용량)에서 계정별 용량 적용·기본값으로. 새 가입자는 화면에서 정한 기본값.
+- 기본값 우선순위: 화면에서 저장한 값(`system_settings.default_quota_mb`) > `FREE_STORAGE_MB`.
+- 테스트: 서버 통합 2개(비관리자 403, 기본값 변경 → 기존 계정 적용, 계정별 유지·되돌리기, 새 가입자, 잘못된 값 400, 없는 계정 404 / ADMIN_EMAILS 없으면 아무도 관리자 아님), 설정 단위 1개, OpenAPI 계약 32개, E2E 2개(관리자 화면, 비관리자에겐 없음).
+- 위험: 용량을 사용량보다 작게 정하면 그 계정은 메모를 늘리는 저장이 거절됨(기존 메모는 그대로, 줄이는 저장은 가능).
+

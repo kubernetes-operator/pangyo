@@ -53,6 +53,7 @@ export default defineConfig({
               COOKIE_SECURE: 'false', // http://127.0.0.1 테스트 전용
               LEASE_TTL_SECS: '5', // 임대 만료·갱신을 빠르게 확인
               DOWNLOADS_DIR: 'e2e/fixtures/downloads', // 설치 파일 다운로드 확인용 작은 가짜 파일
+              ADMIN_EMAILS: 'e2e-admin@example.com', // 관리자 화면 확인용 (예시 도메인)
               RUST_LOG: 'warn',
             },
           },

@@ -15,11 +15,18 @@ resources:
 app:
   registration: open # open | closed
   maxAccounts: 999 # 요구 17: 1000명 미만
-  freeStorageMb: 100 # 임시 정책값
+  freeStorageMb: 100 # 기본 저장공간. 관리자가 웹 '시스템' 화면에서 바꾸면 그 값이 우선
   sessionDays: 30
   cookieSecure: true # HTTPS 뒤에서는 반드시 true
   leaseTtlSecs: 90 # 편집 임대 유지 시간 (ADR-0003). 브라우저는 1/3마다 갱신
   logLevel: info
+
+# 관리자(웹 계정 화면 '시스템': 저장공간 설정). 관리자 이메일은 저장소·values에 넣지 않고 사용자가 만든 Secret에서 읽음:
+#   kubectl -n <ns> create secret generic memonest-admin --from-literal=emails='<관리자 이메일>[,<이메일>...]'
+# Secret이 없으면 관리자 화면은 아무에게도 열리지 않음 (Pod는 정상 시작)
+admin:
+  existingSecret: memonest-admin
+  emailsKey: emails
 
 # DB 연결. 비밀번호는 사용자가 직접 만든 Secret에서만 읽습니다 (차트는 비밀값을 만들지 않음).
 database:

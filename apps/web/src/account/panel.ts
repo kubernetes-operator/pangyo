@@ -1,7 +1,7 @@
 // === 계정 화면 (로드맵 05): 로그인/가입/로그아웃, 용량, 장비 등록 코드, 장비 목록 ===
 // 메모 자체는 계속 이 기기에만 저장됩니다 (동기화는 로드맵 06).
 import type { Locale } from '../settings';
-import { accountApi, ApiError, downloadApi, formatBytes, ServerUnavailable, tokenApi, type Account } from './api';
+import { accountApi, adminApi, ApiError, downloadApi, formatBytes, ServerUnavailable, tokenApi, type Account, type AdminAccount } from './api';
 
 // === 0. 문구 (ko/en) ===
 const TEXT: Record<Locale, Record<string, string>> = {
@@ -44,6 +44,15 @@ const TEXT: Record<Locale, Record<string, string>> = {
     tokenTtl: '만료',
     tokenCreate: '토큰 만들기',
     tokenNew: '새 토큰 만들기 (눌러서 입력)',
+    admin: '시스템 (관리자)',
+    adminDefault: '계정당 기본 저장공간 (MB)',
+    adminSave: '저장',
+    adminApplied: '저장했습니다. 따로 정하지 않은 계정 {n}개에 바로 적용했습니다.',
+    adminAccounts: '계정별 저장공간',
+    adminCustom: '따로 정함',
+    adminApply: '적용',
+    adminReset: '기본값으로',
+    adminHelp: '계정별로 따로 정한 용량은 기본값을 바꿔도 그대로입니다. 사용량보다 작게 정하면 그 계정은 메모를 더 늘릴 수 없습니다.',
     tokenOnce: '지금만 보입니다. n8n의 Header Auth 자격 증명(Authorization: Bearer …)에 저장하세요.',
     tokenNone: '발급한 토큰이 없습니다.',
     days: '일',
@@ -88,6 +97,15 @@ const TEXT: Record<Locale, Record<string, string>> = {
     tokenTtl: 'Expires in',
     tokenCreate: 'Create token',
     tokenNew: 'New token (click to fill in)',
+    admin: 'System (admin)',
+    adminDefault: 'Default storage per account (MB)',
+    adminSave: 'Save',
+    adminApplied: 'Saved. Applied right away to {n} accounts without their own limit.',
+    adminAccounts: 'Storage per account',
+    adminCustom: 'custom',
+    adminApply: 'Apply',
+    adminReset: 'Use default',
+    adminHelp: 'Accounts with their own limit keep it when the default changes. A limit below current usage blocks that account from growing.',
     tokenOnce: 'Shown only now. Save it in n8n as a Header Auth credential (Authorization: Bearer …).',
     tokenNone: 'No tokens yet.',
     days: 'days',
@@ -274,6 +292,7 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       deviceList,
       ...downloadSection(),
       ...tokenSection(),
+      ...(account.isAdmin ? adminSection() : []),
     );
     await renderDevices(deviceList);
   }
@@ -350,6 +369,73 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       createdHelp,
       list,
     ];
+  }
+
+  /** 관리자: 기본 저장공간과 계정별 저장공간 (ADMIN_EMAILS에 있는 계정만 보임, 서버도 다시 확인) */
+  function adminSection(): Node[] {
+    const status = el('p', { className: 'muted', role: 'status', id: 'admin-status' });
+    const input = el('input', { type: 'number', id: 'admin-default-quota', min: '1', max: '1048576', step: '1', required: true });
+    const save = el('button', { type: 'submit', className: 'primary', id: 'admin-default-save' }, t('adminSave'));
+    const list = el('ul', { className: 'device-list', id: 'admin-accounts' });
+    const form = el('form', { className: 'account-form', id: 'admin-default-form' }, el('label', {}, t('adminDefault'), input), save, status);
+    const fail = (e: unknown) => (status.textContent = e instanceof ApiError ? e.message : t('unavailable'));
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      save.disabled = true;
+      try {
+        const r = await adminApi.setDefaultQuota(Number(input.value));
+        status.textContent = t('adminApplied').replace('{n}', String(r.updatedAccounts));
+        await renderAdminAccounts(list, status);
+      } catch (e) {
+        fail(e);
+      } finally {
+        save.disabled = false;
+      }
+    });
+    void (async () => {
+      try {
+        input.value = String((await adminApi.settings()).defaultQuotaMb);
+        await renderAdminAccounts(list, status);
+      } catch (e) {
+        fail(e);
+      }
+    })();
+    return [el('h3', {}, t('admin')), form, el('h3', {}, t('adminAccounts')), message(t('adminHelp')), list];
+  }
+
+  async function renderAdminAccounts(list: HTMLUListElement, status: HTMLElement) {
+    const { accounts } = await adminApi.accounts();
+    const row = (a: AdminAccount) => {
+      const quota = el('input', {
+        type: 'number',
+        min: '1',
+        max: '1048576',
+        step: '1',
+        value: String(Math.round(a.quotaBytes / (1024 * 1024))),
+        className: 'admin-quota',
+      });
+      quota.setAttribute('aria-label', `${a.email ?? a.id} MB`);
+      const apply = el('button', { type: 'button' }, t('adminApply'));
+      const reset = el('button', { type: 'button', disabled: !a.quotaCustom }, t('adminReset'));
+      const update = async (value: number | null) => {
+        try {
+          await adminApi.setQuota(a.id, value);
+          await renderAdminAccounts(list, status);
+        } catch (e) {
+          status.textContent = e instanceof ApiError ? e.message : t('unavailable');
+        }
+      };
+      apply.onclick = () => void update(Number(quota.value));
+      reset.onclick = () => void update(null);
+      const usage = `${formatBytes(a.usedBytes)} / ${formatBytes(a.quotaBytes)}${a.quotaCustom ? ` · ${t('adminCustom')}` : ''}`;
+      return el(
+        'li',
+        { className: 'admin-account', dataset: { accountId: a.id } },
+        el('span', {}, el('strong', {}, a.email ?? a.displayName), el('br'), el('small', {}, usage)),
+        el('span', { className: 'admin-actions' }, quota, apply, reset),
+      );
+    };
+    list.replaceChildren(...accounts.map(row));
   }
 
   async function renderTokens(list: HTMLUListElement) {

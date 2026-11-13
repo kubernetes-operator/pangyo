@@ -17,6 +17,9 @@
 | `GET /api/v1/notes/{id}/similar` | 연관 문서 | notes:read |
 | `GET /api/v1/account/quota` | 본인 사용량 및 요금제 | account:read |
 | `POST /api/v1/integrations/tokens` | n8n 전용 범위/만료 토큰 발급 | owner |
+| `GET/PUT /api/v1/admin/settings` | 기본 저장공간 조회·변경 (따로 정하지 않은 계정에 바로 적용) | 관리자(ADMIN_EMAILS) |
+| `GET /api/v1/admin/accounts` | 계정 목록·사용량·용량 | 관리자 |
+| `PUT /api/v1/admin/accounts/{id}/quota` | 계정별 저장공간 (`null` = 기본값으로) | 관리자 |
 
 ## 클라우드 저장소 연결
 - **모드 A: 자체 Kubernetes 서버의 공통 S3 저장소** (계정 등급별 할당량).
