@@ -177,3 +177,8 @@
 - 발견: 게이트웨이 인증서에 `note.studiobasa.com` 없음 → Cloudflare→원본 TLS 미검증.
 - 조치(2026-11-13): 공용 게이트웨이 인증서에 `note.studiobasa.com` 추가·재발급, 원본 직접 HTTPS 검증 통과(`ssl_verify_result=0`). Cloudflare SSL Full (strict) 전환은 사용자가 진행.
 
+## Unreleased — 로드맵 10: 서버 응답 대기 한도 10초 → 30초 (`feature/roadmap10-client-timeout`)
+- 변경 파일: `apps/web/src/account/api.ts`(`REQUEST_TIMEOUT_MS`), `apps/native/src-tauri/src/remote.rs`(`REQUEST_TIMEOUT`).
+- 이유: 국내에서 Cloudflare 미국 엣지(SEA/LAX/PDX)를 거쳐 외부 응답이 최대 9초까지 걸림(2026-11-12 측정) → 10초 한도에서는 느린 순간에 "서버 없음/오프라인"으로 잘못 판단. 프록시 끄기·유료 전환은 보류(사용자 결정), 대신 대기 한도를 늘림.
+- 영향: 서버가 정말 멈춘 경우 오프라인 표시까지 최대 30초. 네트워크가 끊긴 경우는 즉시 실패라 그대로. 편집 임대 90초(30초마다 갱신)보다 짧음. 서버 쪽 처리 한도(15초)는 서버 안쪽 시간이라 변경 없음.
+
