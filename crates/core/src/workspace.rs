@@ -10,6 +10,9 @@
 //!   서버에 올라간 메모 파일이 사라지면 [`ExternalDeletion`]으로 보관해 사용자가 고르게 합니다.
 //! - 제목/폴더/형식이 바뀌면 파일을 옮기며, 다른 메모 파일을 **덮어쓰지 않습니다** ([`CoreError::Conflict`]).
 //!
+//! - 프로젝트(ADR-0005): 기본 프로젝트는 루트, 다른 프로젝트는 `@<이름>/` 폴더. 화면이 meta `projects`를 저장할 때마다
+//!   ID ↔ 이름 표와 폴더 이름(이름 바꾸기)을 맞춥니다. 앱 밖에서 만든 `@이름` 폴더는 새 프로젝트로 등록합니다.
+//!
 //! 웹 화면의 `Note` 타입(apps/web/src/domain/types.ts)과 같은 JSON 모양(camelCase)을 씁니다.
 
 use std::{
@@ -30,13 +33,18 @@ use crate::{
 };
 
 // === 0. 인덱스 마이그레이션: db/sqlite/*.sql 을 순서대로 적용 (PRAGMA user_version = 적용 개수) ===
-const MIGRATIONS: [&str; 5] = [
+const MIGRATIONS: [&str; 6] = [
     include_str!("../../../db/sqlite/001_initial.sql"),
     include_str!("../../../db/sqlite/002_session_open_time.sql"),
     include_str!("../../../db/sqlite/003_workspace.sql"),
     include_str!("../../../db/sqlite/004_sync_state.sql"),
     include_str!("../../../db/sqlite/005_external_deletions.sql"),
+    include_str!("../../../db/sqlite/006_projects.sql"),
 ];
+/// 화면이 프로젝트 목록을 저장하는 meta 키 (apps/web/src/domain/projects.ts PROJECTS_META_KEY)
+pub const PROJECTS_META_KEY: &str = "projects";
+/// 화면의 프로젝트별 폴더 키 구분자 (`<프로젝트ID>::<경로>`, projects.ts folderKey)
+const FOLDER_KEY_SEPARATOR: &str = "::";
 
 /// Undo/Redo 한 칸 (웹과 같은 전체 스냅샷)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,6 +89,9 @@ pub struct NoteRecord {
     /// 동기화 상태 (웹 `Note.sync`와 같은 JSON). 데스크톱 동기화 전까지는 보관만 합니다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync: Option<serde_json::Value>,
+    /// 프로젝트 ID (없음 = 기본, ADR-0005)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
 }
 
 /// 앱 밖에서 지워진, 서버에 올라간 적 있는 메모 (사용자가 서버 삭제/다시 받기를 고를 때까지 보관)
@@ -130,7 +141,19 @@ impl Workspace {
 
     /// 디스크의 메모 파일을 기준으로 인덱스를 맞추고 전체 목록을 돌려줍니다.
     pub fn list_notes(&mut self) -> Result<Vec<NoteRecord>> {
-        let files = self.store.list()?;
+        self.adopt_project_dirs()?;
+        let ids_by_name: HashMap<String, String> = self
+            .project_names()?
+            .into_iter()
+            .map(|(id, name)| (name, id))
+            .collect();
+        // 이름표에 없는 프로젝트 폴더(규칙에 맞지 않는 등)의 파일은 건드리지 않음
+        let files: Vec<NoteLocation> = self
+            .store
+            .list()?
+            .into_iter()
+            .filter(|l| l.project.is_empty() || ids_by_name.contains_key(&l.project))
+            .collect();
         let tx = self.db.transaction()?;
         let mut indexed = load_index(&tx)?;
         // 1) 경로가 그대로인 파일: 바깥 편집 감지
@@ -231,7 +254,9 @@ impl Workspace {
         let mut out = Vec::with_capacity(found.len());
         for (location, content, row) in found {
             let (undo, redo) = load_history(&tx, &row.id)?;
+            let project_id = ids_by_name.get(&location.project).cloned();
             out.push(NoteRecord {
+                project_id,
                 sessions: load_sessions(&tx, &row.id)?,
                 id: row.id,
                 title: location.title,
@@ -293,7 +318,9 @@ impl Workspace {
     pub fn save_note(&mut self, note: &NoteRecord) -> Result<()> {
         uuid::Uuid::parse_str(&note.id)
             .map_err(|_| CoreError::InvalidLocation(format!("잘못된 메모 ID: {}", note.id)))?;
-        let target = NoteLocation::new(&note.folder, &note.title, note.format)?;
+        let project = self.project_name_of(note.project_id.as_deref())?;
+        let target =
+            NoteLocation::new(&note.folder, &note.title, note.format)?.in_project(&project)?;
         let target_path = target.display_path();
         let tx = self.db.transaction()?;
 
@@ -401,12 +428,162 @@ impl Workspace {
         Ok(())
     }
 
+    /// 폴더 목록. 프로젝트 폴더 안은 화면과 같은 `<프로젝트ID>::<경로>` 키
     pub fn list_folders(&self) -> Result<Vec<String>> {
-        self.store.folders()
+        let names = self.project_names()?;
+        let ids: HashMap<&str, &str> = names
+            .iter()
+            .map(|(id, n)| (n.as_str(), id.as_str()))
+            .collect();
+        let mut out = Vec::new();
+        for folder in self.store.folders()? {
+            match folder.strip_prefix(crate::store::PROJECT_DIR_PREFIX) {
+                None => out.push(folder),
+                Some(rest) => {
+                    if let Some((project, path)) = rest.split_once('/') {
+                        if let Some(id) = ids.get(project) {
+                            out.push(format!("{id}{FOLDER_KEY_SEPARATOR}{path}"));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
+    /// 폴더 만들기. `<프로젝트ID>::<경로>`면 그 프로젝트 안에 (화면과 같은 키를 돌려줌)
     pub fn create_folder(&self, raw: &str) -> Result<String> {
-        self.store.create_folder(raw)
+        match raw.split_once(FOLDER_KEY_SEPARATOR) {
+            None => self.store.create_folder(raw),
+            Some((id, path)) => {
+                let project = self.project_name_of(Some(id))?;
+                let folder = self.store.create_project_folder(&project, path)?;
+                Ok(format!("{id}{FOLDER_KEY_SEPARATOR}{folder}"))
+            }
+        }
+    }
+
+    /// 프로젝트 ID → 이름 (없음 = 기본 `""`). 모르는 ID면 오류 (프로젝트 목록을 먼저 저장해야 함)
+    fn project_name_of(&self, id: Option<&str>) -> Result<String> {
+        let Some(id) = id.filter(|i| !i.is_empty()) else {
+            return Ok(String::new());
+        };
+        self.db
+            .query_row(
+                "SELECT name FROM projects WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::InvalidLocation(format!("알 수 없는 프로젝트: {id}")))
+    }
+
+    /// (ID, 이름) 목록
+    pub fn project_names(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self
+            .db
+            .prepare("SELECT id, name FROM projects ORDER BY name")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// 화면이 저장한 프로젝트 목록에 맞춤: 새 프로젝트 등록, 이름 바꾸기(폴더 이름도), 빠진 프로젝트 정리(빈 폴더만 지움)
+    fn apply_projects(&mut self, value: &serde_json::Value) -> Result<()> {
+        let wanted: Vec<(String, String)> = value
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(|p| {
+                        Some((
+                            p.get("id")?.as_str()?.to_owned(),
+                            p.get("name")?.as_str()?.to_owned(),
+                        ))
+                    })
+                    .filter(|(id, name)| !id.is_empty() && crate::store::valid_project_name(name))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let current: HashMap<String, String> = self.project_names()?.into_iter().collect();
+        let tx = self.db.transaction()?;
+        for (id, name) in &wanted {
+            match current.get(id) {
+                Some(old) if old == name => {}
+                Some(old) => {
+                    self.store.rename_project(old, name)?;
+                    let (from, to) = (
+                        format!("{}{old}/", crate::store::PROJECT_DIR_PREFIX),
+                        format!("{}{name}/", crate::store::PROJECT_DIR_PREFIX),
+                    );
+                    for table in ["notes", "external_deletions"] {
+                        tx.execute(
+                            &format!(
+                                "UPDATE {table} SET path = ?2 || substr(path, length(?1) + 1)
+                                 WHERE substr(path, 1, length(?1)) = ?1"
+                            ),
+                            params![from, to],
+                        )?;
+                    }
+                    tx.execute(
+                        "UPDATE projects SET name = ?2 WHERE id = ?1",
+                        params![id, name],
+                    )?;
+                }
+                None => {
+                    // 같은 이름이 다른 ID로 남아 있으면(지운 뒤 다시 만듦 등) 그 행을 바꿈
+                    tx.execute(
+                        "DELETE FROM projects WHERE lower(name) = lower(?1)",
+                        params![name],
+                    )?;
+                    tx.execute(
+                        "INSERT INTO projects (id, name) VALUES (?1, ?2)",
+                        params![id, name],
+                    )?;
+                }
+            }
+        }
+        for (id, name) in &current {
+            if !wanted.iter().any(|(w, _)| w == id) {
+                tx.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+                self.store.remove_project_dir_if_empty(name)?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 앱 밖에서 만든 `@이름` 폴더 → 새 프로젝트로 등록하고 화면 목록(meta)에도 추가 (올릴 변경으로 표시)
+    fn adopt_project_dirs(&mut self) -> Result<()> {
+        let known: Vec<String> = self
+            .project_names()?
+            .into_iter()
+            .map(|(_, n)| n.to_lowercase())
+            .collect();
+        let new: Vec<String> = self
+            .store
+            .project_dirs()?
+            .into_iter()
+            .filter(|n| !known.contains(&n.to_lowercase()))
+            .collect();
+        if new.is_empty() {
+            return Ok(());
+        }
+        let mut list = match self.get_meta(PROJECTS_META_KEY)? {
+            Some(serde_json::Value::Array(list)) => list,
+            _ => Vec::new(),
+        };
+        let now = iso(SystemTime::now());
+        for name in new {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.db.execute(
+                "INSERT INTO projects (id, name) VALUES (?1, ?2)",
+                params![id, name],
+            )?;
+            list.push(serde_json::json!({
+                "id": id, "name": name, "createdAt": now, "modifiedAt": now,
+                "sync": { "synced": false, "dirty": true },
+            }));
+        }
+        self.put_meta(PROJECTS_META_KEY, &serde_json::Value::Array(list))
     }
 
     pub fn get_meta(&self, key: &str) -> Result<Option<serde_json::Value>> {
@@ -421,7 +598,15 @@ impl Workspace {
         Ok(raw.map(|s| serde_json::from_str(&s)).transpose()?)
     }
 
-    pub fn set_meta(&self, key: &str, value: &serde_json::Value) -> Result<()> {
+    /// 화면 설정 저장. `projects`(프로젝트 목록)면 ID ↔ 이름 표와 폴더 이름도 맞춤 (ADR-0005)
+    pub fn set_meta(&mut self, key: &str, value: &serde_json::Value) -> Result<()> {
+        if key == PROJECTS_META_KEY {
+            self.apply_projects(value)?;
+        }
+        self.put_meta(key, value)
+    }
+
+    fn put_meta(&self, key: &str, value: &serde_json::Value) -> Result<()> {
         self.db.execute(
             "INSERT INTO meta (key, value_json) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",

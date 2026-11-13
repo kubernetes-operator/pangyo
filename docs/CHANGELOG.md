@@ -219,3 +219,11 @@
 - 데스크톱·모바일 앱은 3/3단계 전까지 프로젝트 화면을 숨기고 예전 방식(`projectId`를 보내지 않음 → 서버가 프로젝트 유지, 다른 프로젝트 메모는 받지 않음).
 - 테스트: `make check` 통과(Vitest 89 — 프로젝트 동기화 4개·normalizeNote 1개 추가, Playwright 21 — 로컬 프로젝트 시나리오·두 기기 프로젝트 전달 추가), `make desktop-sync-check` 7/7.
 
+## Unreleased — 9번 프로젝트 3/3단계: 데스크톱·모바일 (`feature/projects-desktop`)
+- 변경 파일: `crates/core/src/{store.rs,workspace.rs,paths.rs}`, `db/sqlite/006_projects.sql`(신규), `crates/core/tests/workspace.rs`, `packages/protocol/fixtures/paths.json`(`@` 시작 폴더 금지), `apps/web/src/domain/paths.ts`, `apps/web/src/ui/app.ts`(앱에서도 프로젝트 화면, 디스크 다시 읽을 때 프로젝트 목록 갱신), `apps/native/src-tauri/src/remote.rs`(`/projects` 허용), `scripts/desktop_sync_check.py`(8a~8c), 문서(ADR-0005, 01, 04).
+- 파일 배치: 기본 프로젝트는 `Notes/` 그대로(기존 파일 이동 없음), 다른 프로젝트는 `Notes/@이름/폴더/폴더/메모.md`. 프로젝트 ID ↔ 이름은 SQLite `projects`, 화면이 목록을 저장할 때 새 프로젝트 등록·이름 바꾸기(폴더 이름도)·빈 프로젝트 폴더 정리.
+- 앱 밖: `@이름` 폴더를 만들거나 이름을 바꾸면 새 프로젝트로 등록(메모 ID는 내용으로 유지). 규칙에 맞지 않는 `@` 폴더는 무시.
+- 공통 규칙: 폴더 이름은 `@`로 시작할 수 없음(paths.json → TS·Rust·서버).
+- 테스트: core 통합 2개 추가(파일 배치·이름 바꾸기·폴더 키·기본으로 옮기기 충돌·빈 프로젝트 정리 / 앱 밖 `@` 폴더 등록·이름 변경 시 ID 유지), `make desktop-sync-check` 10/10 + 콘솔 오류 없음(8a 웹 프로젝트 메모 → `@여행/제주/일정.md`, 8b 앱 밖 `@개인` → 서버 프로젝트, 8c 웹에서 이름 바꾸기 → `@제주 여행`).
+- 아직: Windows·Android 실기기 확인(파일 관리자에서 `@` 폴더가 보이는지 등).
+

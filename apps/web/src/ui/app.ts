@@ -69,8 +69,8 @@ const state = {
   projects: [] as LocalProject[],
   project: DEFAULT_PROJECT,
 };
-/** 프로젝트 화면 사용 여부 (웹만, 데스크톱은 ADR-0005 3단계에서) */
-const projectsEnabled = () => !isTauri();
+/** 프로젝트 화면 사용 여부 (ADR-0005: 웹·데스크톱·모바일 모두. 데스크톱은 `@프로젝트` 폴더) */
+const projectsEnabled = () => true;
 
 // 데스크톱·모바일 앱의 장비 연결 상태 (ADR-0004). 웹에서는 쓰지 않음
 const device = {
@@ -426,7 +426,8 @@ function syncTick(): Promise<void> {
 
 const sameNote = (a: Note, b: Note) =>
   a.title === b.title && a.folder === b.folder && a.format === b.format && a.content === b.content &&
-  a.modifiedAt === b.modifiedAt && JSON.stringify(a.sync ?? null) === JSON.stringify(b.sync ?? null);
+  a.modifiedAt === b.modifiedAt && JSON.stringify(a.sync ?? null) === JSON.stringify(b.sync ?? null) &&
+  (a.projectId ?? null) === (b.projectId ?? null);
 
 /** 파일 저장소를 다시 읽어 화면 상태에 반영 (편집 중인 메모는 건드리지 않음) */
 async function refreshFromDisk(): Promise<void> {
@@ -449,8 +450,8 @@ async function refreshFromDisk(): Promise<void> {
       next.push(current);
     } else if (current === state.note) {
       // 선택한 메모는 같은 객체를 유지 (진행 중인 편집 세션 기록이 이 객체에 있음)
-      const { title, folder, format, content, modifiedAt, sync } = found;
-      Object.assign(current, { title, folder, format, content, modifiedAt, sync });
+      const { title, folder, format, content, modifiedAt, sync, projectId } = found;
+      Object.assign(current, { title, folder, format, content, modifiedAt, sync, projectId });
       next.push(current);
       changed.push(current.id);
     } else {
@@ -464,6 +465,13 @@ async function refreshFromDisk(): Promise<void> {
   }
   state.notes = next;
   state.folders = await repo.listFolders();
+  // 앱 밖에서 만든 `@이름` 폴더는 core가 새 프로젝트로 등록 → 목록 다시 읽기 (ADR-0005)
+  const projects = await repo.getMeta<LocalProject[]>(PROJECTS_META_KEY);
+  if (projects && projects.length !== state.projects.length) {
+    state.projects = projects;
+    renderProjects();
+    displayTree();
+  }
   if (state.note && !next.includes(state.note)) {
     state.selectedId = null;
     state.note = null;
