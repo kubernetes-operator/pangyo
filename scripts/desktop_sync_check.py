@@ -9,7 +9,7 @@
   4. 앱 밖 이름 변경 → 같은 ID로 서버 반영
   5. 앱 밖 삭제 → 서버에서 바로 지우지 않고 '확인 필요' → 화면에서 '서버에서도 삭제' → 서버 묘비
   6. 장비 토큰이 앱 데이터 폴더(인덱스·device.json)에 평문으로 남지 않음
-  7. 웹에서 장비를 폐기하면 앱이 동기화를 멈추고 다시 연결하라고 안내 (메모 파일은 그대로)
+  7. 웹에서 장비를 폐기하면 앱이 동기화를 멈추고 다시 연결하라고 안내 + 서버에 있는 메모는 이 기기에서 지움 (2026-11-13 사용 의견)
   9. 앱 안 업데이트(A안): 게시한 빌드가 앱과 다르면 상단에 '새 버전 있음'
   8. 프로젝트(ADR-0005): 웹 프로젝트 메모 → `@이름` 폴더, 앱 밖 `@폴더` → 서버 프로젝트, 웹에서 이름 바꾸면 폴더 이름도
 사용자의 실제 메모 폴더·앱 데이터·키링은 건드리지 않습니다 (임시 HOME + 격리된 D-Bus 세션의 임시 키링).
@@ -247,10 +247,11 @@ def main() -> int:
 
         status, _ = api.call("DELETE", f"/devices/{device_json['deviceId']}")
         assert status == 204, status
-        notes_before = sorted(p.name for p in notes.rglob("*.md"))
-        results.append(wait("7. 웹에서 장비 폐기 → 앱이 동기화를 멈추고 '다시 연결' 안내 (메모 파일 유지)",
-                            lambda: "[e2e] revoked shown" in log()
-                            and sorted(p.name for p in notes.rglob("*.md")) == notes_before))
+        assert any(notes.rglob("*.md")), "폐기 전에는 메모 파일이 있어야 함"
+        results.append(wait("7. 웹에서 장비 폐기 → '다시 연결' 안내 + 서버에 있는 메모 파일을 이 기기에서 지움",
+                            lambda: "[e2e] revoked shown" in log() and not any(notes.rglob("*.md"))))
+        # 서버에는 그대로
+        results.append(len(by_title()) > 0)
 
         errors = [l for l in log().splitlines() if "CONSOLE ERROR" in l or "[e2e] error" in l]
         print(("OK   " if not errors else "FAIL ") + "웹뷰 콘솔 오류 없음")

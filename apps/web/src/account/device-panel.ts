@@ -21,7 +21,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     nameLabel: '장비',
     since: '연결한 때',
     unpair: '이 기기 연결 해제',
-    unpairHelp: '연결을 해제해도 이 기기의 메모 파일은 그대로 남습니다. 서버의 장비 기록은 웹 계정 화면에서 폐기하세요.',
+    unpairHelp: '연결을 해제하면 서버에 있는 메모는 이 기기에서 지웁니다(서버·다른 기기에는 그대로). 올리지 못한 메모는 남겨 둡니다.',
     revoked: '서버에서 이 장비 연결이 폐기되었거나 만료되었습니다. 다시 연결하세요.',
     deletions: '앱 밖에서 지워진 메모',
     deletionsHelp: '파일 탐색기 등에서 지운 메모입니다. 서버와 다른 기기에는 아직 남아 있습니다.',
@@ -56,7 +56,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     nameLabel: 'Device',
     since: 'Linked at',
     unpair: 'Unlink this device',
-    unpairHelp: 'Unlinking keeps the note files on this device. Revoke the device record on the web Account screen.',
+    unpairHelp: 'Unlinking removes the notes that are on the server from this device (they stay on the server and other devices). Notes not yet uploaded are kept.',
     revoked: 'This device was revoked or expired on the server. Link it again.',
     deletions: 'Notes deleted outside the app',
     deletionsHelp: 'Deleted with a file manager or another tool. They still exist on the server and other devices.',
@@ -84,8 +84,8 @@ export type DeletionChoice = 'delete' | 'restore';
 export interface DeviceHooks {
   /** 연결 성공 → 동기화 시작 */
   onPaired: (info: DeviceInfo) => void | Promise<void>;
-  /** 연결 해제 → 동기화 중지 */
-  onUnpaired: () => void | Promise<void>;
+  /** 연결 해제 → 확인·올리기·이 기기 메모 정리 후 동기화 중지. false면 취소 */
+  onUnpaired: () => boolean | void | Promise<boolean | void>;
   /** 상단과 같은 동기화 상태 문구 */
   statusText: () => string;
   /** 바깥 삭제 처리. 결과 코드(deleted, gone, changed, busy, restored, missing, offline, notSynced)를 돌려줌 */
@@ -210,7 +210,10 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
     const unpair = el('button', { type: 'button', id: 'device-unpair' }, t('unpair'));
     unpair.onclick = async () => {
       unpair.disabled = true;
-      await hooks.onUnpaired();
+      if ((await hooks.onUnpaired()) === false) {
+        unpair.disabled = false;
+        return;
+      }
       await deviceApi.unpair().catch(console.error);
       await renderForm();
     };

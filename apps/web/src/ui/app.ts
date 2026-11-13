@@ -14,7 +14,7 @@ import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
 import { askConfirm, askMove, askName, type MoveTarget } from './name-dialog';
 import { depthOf, folderMoveProblem, isWithin, joinPath, lastSegment, parentOf, remap } from '../domain/tree-ops';
-import { HELP_MARKDOWN, HELP_TITLE } from './help';
+import { HELP_MARKDOWN, HELP_TITLE, isPristineWelcome, WELCOME_NOTE_ID } from './help';
 import { buildLabel, pickUpdate, type UpdateState } from './app-update';
 import {
   CURRENT_PROJECT_META_KEY,
@@ -417,7 +417,10 @@ function renderSyncInfo(): void {
 function syncStore(): SyncStore {
   return {
     list: () => state.notes,
-    save: (note) => persist(note, true),
+    // 이미 이 기기에서 지운 메모(장비 해제 정리 등)는 늦게 끝난 동기화가 다시 쓰지 않음
+    save: async (note) => {
+      if (state.notes.includes(note)) await persist(note, true);
+    },
     add: async (note) => {
       await repo.saveNote(note); // 먼저 저장: 디스크 다시 읽기(refreshFromDisk)가 저장 전 메모를 지우지 않게
       state.notes.push(note);
@@ -484,6 +487,7 @@ async function startSync(accountId: string, label: string): Promise<void> {
   const engine = new SyncEngine(syncApi, syncStore(), {
     clientId: CLIENT_ID,
     label,
+    pristine: isPristineWelcome,
     onStatus: (status) => {
       state.syncStatus = status;
       renderSyncInfo();
@@ -653,11 +657,74 @@ async function stopDeviceSync(): Promise<void> {
   await stopSync();
 }
 
-/** 서버가 장비 토큰을 거부(401): 동기화를 멈추고 다시 연결하도록 안내 (메모는 이 기기에 그대로) */
+/** 서버가 장비 토큰을 거부(401) = 웹에서 이 장비를 폐기: 동기화를 멈추고, 서버에 있는 메모는 이 기기에서 지움 */
 function onDeviceUnauthorized(): void {
   if (device.revoked) return;
   device.revoked = true;
-  void stopSync().then(() => device.panel?.refresh());
+  void stopSync()
+    .then(() => wipeSyncedData())
+    .then(() => device.panel?.refresh());
+}
+
+/**
+ * 장비 연결 해제(2026-11-13 사용 의견): 서버에 있는 메모는 이 기기에서 지움(서버·다른 기기에는 그대로).
+ * 서버에 올라가지 못한 메모(새 메모·고친 메모)는 잃지 않도록 남김. 동기화 기록도 처음 상태로.
+ */
+async function wipeSyncedData(): Promise<{ removed: number; kept: number }> {
+  const onServer = (n: Note) => (n.sync?.version ?? 0) > 0 && !n.sync?.dirty;
+  const wipe = state.notes.filter(onServer);
+  if (state.note && wipe.includes(state.note)) {
+    releaseEdit();
+    endSession();
+    await flushSave();
+  }
+  for (const note of wipe) await repo.deleteNote(note.id).catch(console.error);
+  state.notes = state.notes.filter((n) => !onServer(n));
+  for (const note of state.notes) note.sync = undefined; // 다시 연결하면 새로 올림
+  for (const note of state.notes) await repo.saveNote(note).catch(console.error);
+  // 빈 폴더 먼저 (프로젝트 폴더는 프로젝트 기록이 있어야 찾을 수 있음), 그다음 남은 메모가 없는 프로젝트
+  const usedProjects = new Set(state.notes.map((n) => projectOf(n)));
+  const keepFolders = new Set(state.notes.flatMap((n) => folderAncestors(n.folder).map((f) => folderKey(projectOf(n), f))));
+  for (const f of [...state.folders].sort((a, b) => b.path.length - a.path.length))
+    if (!keepFolders.has(f.path)) await repo.deleteFolder(f.path).catch(console.error);
+  state.folders = state.folders.filter((f) => keepFolders.has(f.path));
+  state.projects = state.projects
+    .filter((p) => usedProjects.has(p.id))
+    .map((p) => ({ ...p, sync: { synced: false, dirty: true } }));
+  await saveProjects();
+  for (const key of ['syncCursor', 'syncProjectsAware', 'syncAccountId', DEFAULT_PROJECT_NAME_META_KEY])
+    await repo.setMeta(key, null).catch(console.error);
+  state.defaultProjectName = '';
+  if (!usedProjects.has(state.project)) state.project = DEFAULT_PROJECT;
+  state.selectedId = null;
+  state.note = null;
+  state.lease = null;
+  state.selectedFolder = '';
+  renderProjects();
+  renderEditor();
+  displayTree();
+  const result = { removed: wipe.length, kept: state.notes.length };
+  $('project-status').textContent = WORDS[state.locale].unlinkDone
+    .replace('{removed}', String(result.removed))
+    .replace('{kept}', String(result.kept));
+  return result;
+}
+
+/** 앱에서 '이 기기 연결 해제': 확인 → 올릴 변경 먼저 올림 → 이 기기 메모 정리 → 동기화 중지 */
+async function unlinkDevice(): Promise<boolean> {
+  const w = WORDS[state.locale];
+  const onServer = state.notes.filter((n) => (n.sync?.version ?? 0) > 0).length;
+  const ok = await askConfirm({
+    message: w.unlinkConfirm.replace('{n}', String(onServer)),
+    ok: w.unlinkOk,
+    cancel: w.cancel,
+    danger: true,
+  });
+  if (!ok) return false;
+  await state.sync?.syncOnce().catch(() => undefined); // 올리지 못한 변경 먼저 (오프라인이면 남겨 둠)
+  await stopDeviceSync();
+  await wipeSyncedData();
+  return true;
 }
 
 /** 앱: 서버 요청을 장비 토큰 전송으로 바꾸고 장비 연결 화면을 붙임 */
@@ -714,7 +781,7 @@ async function setupDevice(): Promise<void> {
   device.api = tauri.deviceApi;
   const panel = createDevicePanel($<HTMLDialogElement>('account-dialog'), () => state.locale, {
     onPaired: (info) => startDeviceSync(info),
-    onUnpaired: () => stopDeviceSync(),
+    onUnpaired: () => unlinkDevice(),
     statusText: () => syncStatusText(state.syncStatus, state.locale, state.syncBlocked, device.deletions.length, device.revoked),
     resolveDeletion,
     revoked: () => device.revoked,
@@ -1456,6 +1523,7 @@ function openTreeMenu(item: TreeItem, anchor: HTMLElement): void {
   };
   action(w.renameItem, 'menu-rename', () => renameItem(item));
   action(w.moveItem, 'menu-move', () => moveItem(item));
+  action(w.copyItem, 'menu-copy', () => copyItem(item));
   action(w.deleteItem, 'menu-delete', () => deleteItem(item), true);
   const rect = anchor.getBoundingClientRect();
   menu.style.top = `${Math.min(rect.bottom + 2, window.innerHeight - 130)}px`;
@@ -1547,6 +1615,53 @@ async function moveItem(item: TreeItem): Promise<void> {
   if (!target) return;
   if (note) await moveNotesTo([note], target.project, target.folder, note.folder);
   else if (item.kind === 'folder') await moveFolder(item.path, target.project, target.folder);
+}
+
+/** 복사 (2026-11-13 사용 의견): 메모는 같은 폴더에 "제목 (사본)", 폴더는 같은 위치에 "이름 (사본)"으로 안의 메모·빈 폴더까지 */
+async function copyItem(item: TreeItem): Promise<void> {
+  const w = WORDS[state.locale];
+  const time = nowISO();
+  const duplicate = (note: Note, folder: string, title: string): Note => ({
+    id: uid(),
+    title,
+    folder,
+    format: note.format,
+    content: note.content,
+    createdAt: time,
+    modifiedAt: time,
+    sessions: [],
+    undo: [],
+    redo: [],
+    projectId: note.projectId ?? null,
+  });
+  const save = async (copy: Note) => {
+    state.sync?.markDirty(copy);
+    await repo.saveNote(copy);
+    state.notes.push(copy);
+  };
+  if (item.kind === 'note') {
+    const note = state.notes.find((n) => n.id === item.id);
+    if (!note) return;
+    const taken = (t: string) =>
+      visibleNotes().some((n) => inProject(n, projectOf(note)) && n.folder === note.folder && n.title === t && n.format === note.format);
+    const copy = duplicate(note, note.folder, restoredName(note.title, taken, w.copySuffix));
+    await save(copy);
+    await selectNote(copy.id);
+  } else if (item.kind === 'folder') {
+    const parent = parentOf(item.path);
+    const taken = (name: string) => foldersOf(state.project).includes(joinPath(parent, name));
+    const target = joinPath(parent, restoredName(lastSegment(item.path), taken, w.copySuffix));
+    for (const path of foldersOf(state.project).filter((p) => isWithin(p, item.path))) {
+      const key = folderKey(state.project, remap(path, item.path, target)!);
+      if (!state.folders.some((f) => f.path === key)) {
+        await repo.saveFolder(key);
+        state.folders.push({ path: key });
+      }
+    }
+    for (const note of notesIn(state.project, item.path)) await save(duplicate(note, remap(note.folder, item.path, target)!, note.title));
+    selectFolder(target);
+  }
+  displayTree();
 }
 
 async function deleteItem(item: TreeItem): Promise<void> {
@@ -1977,10 +2092,25 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   updateConnectivity();
   void watchBattery();
   bindEvents();
-  // 처음 실행(메모 없음): 사용법을 먼저 보여 줌 (한 번만)
+  // 처음 실행(메모 없음): 사용법을 첫 문서로 만들어 엶 (한 번만, 모든 기기가 같은 ID)
   if (!state.notes.length && !helpShown()) {
     markHelpShown();
-    openHelp();
+    const time = nowISO();
+    const welcome: Note = {
+      id: WELCOME_NOTE_ID,
+      title: HELP_TITLE[state.locale],
+      folder: '',
+      format: 'md',
+      content: HELP_MARKDOWN[state.locale],
+      createdAt: time,
+      modifiedAt: time,
+      sessions: [],
+      undo: [],
+      redo: [],
+    };
+    await repo.saveNote(welcome);
+    state.notes.push(welcome);
+    await selectNote(welcome.id);
   }
   setInterval(updateTimer, SETTINGS.timerTickMs);
   setInterval(renderClock, SETTINGS.clockTickMs);

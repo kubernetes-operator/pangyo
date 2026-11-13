@@ -223,6 +223,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/pairing/finish", post(accounts::pairing_finish))
         .route("/api/v1/devices", get(accounts::list_devices))
         .route("/api/v1/devices/{id}", delete(accounts::revoke_device))
+        .route(
+            "/api/v1/devices/{id}/record",
+            delete(accounts::forget_device),
+        )
         // 메모 동기화 + 편집 임대 (로드맵 06, ADR-0003)
         .route("/api/v1/notes", get(notes::changes))
         .route(

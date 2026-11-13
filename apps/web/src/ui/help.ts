@@ -5,6 +5,17 @@ import type { Locale } from '../settings';
 
 export const HELP_TITLE: Record<Locale, string> = { ko: 'MemoNest 사용법', en: 'MemoNest guide' };
 
+/**
+ * 처음 실행 때 만드는 첫 문서(사용법)의 고정 ID (2026-11-13 사용 의견: 첫 문서로 남기기).
+ * 모든 기기가 같은 ID를 써서, 처음 실행한 기기가 여럿이어도 계정에는 한 개만 남습니다.
+ */
+export const WELCOME_NOTE_ID = 'a0e1c0de-0000-4000-8000-000000000001';
+
+/** 손대지 않은 사용법 문서인지 (그러면 서버에 올리지 않고, 서버에 같은 문서가 있으면 그것으로 맞춤) */
+export const isPristineWelcome = (note: { id: string; title: string; content: string }): boolean =>
+  note.id === WELCOME_NOTE_ID &&
+  (Object.keys(HELP_MARKDOWN) as Locale[]).some((l) => note.content === HELP_MARKDOWN[l] && note.title === HELP_TITLE[l]);
+
 export const HELP_MARKDOWN: Record<Locale, string> = {
   ko: `# MemoNest 사용법
 

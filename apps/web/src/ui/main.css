@@ -100,3 +100,16 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 /* 휴지통 (1주일 보관) */
 .trash-item{gap:8px}
 .trash-item small{color:var(--muted)}
+/* 장비 등록 코드·서버 주소 크게 + 복사 (사용 의견 4차) */
+.pairing-server{display:grid;gap:8px;margin:6px 0}
+.pairing-value{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 8px;border:1px solid var(--hairline);border-radius:4px;padding:8px}
+.pairing-value small{grid-column:1/-1;color:var(--muted);font-size:12px}
+.pairing-value code{font-family:ui-monospace,Consolas,monospace;font-size:17px;word-break:break-all;user-select:all}
+.pairing-value .copy{font-size:12px}
+/* 본문 아래 '더보기' (사용 의견 4차) */
+.more-actions{position:relative}
+.more-actions summary{list-style:none;cursor:pointer;border:1px solid #999;border-radius:4px;padding:7px 11px;font-size:12px;background:#fff}
+.more-actions summary::-webkit-details-marker{display:none}
+.more-actions .more-panel{position:absolute;bottom:calc(100% + 4px);right:0;z-index:15;display:flex;flex-direction:column;gap:6px;min-width:220px;background:var(--paper);border:1px solid var(--ink);border-radius:4px;padding:8px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.bottom-text{align-items:center}
+.trash-btn{font-size:12px;padding:4px 9px}

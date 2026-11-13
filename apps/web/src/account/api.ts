@@ -148,6 +148,8 @@ export const accountApi = {
   pairingStart: () => request<PairingStart>('POST', '/pairing/start'),
   devices: () => request<Device[]>('GET', '/devices'),
   revokeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),
+  /** 폐기한 장비의 기록 지우기 */
+  forgetDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}/record`),
 };
 
 export interface IntegrationToken {
