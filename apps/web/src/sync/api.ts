@@ -1,6 +1,6 @@
 // === 동기화 API 연결 (계약: packages/protocol/openapi.json — /api/v1/notes*) ===
 import { ApiError, request, ServerUnavailable } from '../account/api';
-import type { LeaseGrant, ServerNote, SyncApi, SyncError } from './engine';
+import type { LeaseGrant, ServerNote, ServerProject, SyncApi, SyncError } from './engine';
 
 /** 계정 API 오류를 엔진이 이해하는 모양으로 */
 function toSyncError(e: unknown): SyncError {
@@ -20,8 +20,15 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
 const notePath = (id: string) => `/notes/${encodeURIComponent(id)}`;
 
 export const syncApi: SyncApi = {
-  changes: (since) =>
-    call(() => request<{ notes: ServerNote[]; cursor: number; hasMore: boolean }>('GET', `/notes?since=${since}`)),
+  changes: (since, projects) =>
+    call(() =>
+      request<{ notes: ServerNote[]; projects?: ServerProject[]; cursor: number; hasMore: boolean }>(
+        'GET',
+        `/notes?since=${since}${projects ? '&projects=1' : ''}`,
+      ),
+    ),
+  putProject: (id, name) => call(() => request<ServerProject>('PUT', `/projects/${encodeURIComponent(id)}`, { name })),
+  deleteProject: (id) => call(() => request<ServerProject>('DELETE', `/projects/${encodeURIComponent(id)}`)),
   get: (id) => call(() => request<ServerNote>('GET', notePath(id))),
   put: (id, body) => call(() => request<ServerNote>('PUT', notePath(id), body)),
   acquireLease: (id, clientId, label) =>
