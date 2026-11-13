@@ -82,3 +82,7 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 /* 앱 안 업데이트 (A안) */
 .update-btn{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
 .update-btn[hidden]{display:none}
+/* 도움말 (처음 실행 시 사용법) */
+.help-dialog{width:min(720px,calc(100vw - 32px))}
+.help-text{white-space:pre-wrap;font-family:ui-monospace,Consolas,'D2Coding',monospace;font-size:13px;line-height:1.6;max-height:60dvh;overflow:auto;background:var(--panel);padding:12px;border-radius:4px}
+#split-btn[hidden]{display:none}

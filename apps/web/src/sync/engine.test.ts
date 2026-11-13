@@ -343,3 +343,52 @@ describe('동기화 엔진 (ADR-0003 A안)', () => {
     });
   });
 });
+
+describe('삭제 대기 (2026-11-13 사용자 확인: 메모 삭제 시 "사용 중")', () => {
+  it('다른 기기가 편집 중이면 대기했다가, 그 기기가 닫으면 자동으로 서버·두 기기에서 지워짐', async () => {
+    const server = new FakeServer();
+    const a = await device(server, 'laptop', '노트북');
+    a.store.notes.push(note('지울 메모', '본문'));
+    await a.engine.adoptLocalNotes();
+    await a.engine.syncOnce();
+    const b = await device(server, 'phone', '휴대폰');
+    await b.engine.syncOnce();
+    expect((await b.engine.beginEdit(b.store.notes[0]!)).kind).toBe('held');
+
+    const n = a.store.notes[0]!;
+    n.sync = { ...n.sync!, deleting: true };
+    await a.engine.syncOnce();
+    expect(a.store.notes.map((x) => x.sync?.deleting)).toEqual([true]); // 대기
+    expect(a.engine.status().pending).toBe(1);
+    expect(server.notes.get(n.id)!.deleted).toBe(false);
+
+    await b.engine.endEdit(b.store.notes[0]!.id);
+    await a.engine.syncOnce();
+    expect(a.store.notes).toEqual([]);
+    expect(server.notes.get(n.id)!.deleted).toBe(true);
+    await b.engine.syncOnce();
+    expect(b.store.notes).toEqual([]);
+  });
+
+  it('대기 중 다른 기기가 고치면 지우지 않고 최신 내용을 받음', async () => {
+    const server = new FakeServer();
+    const a = await device(server, 'laptop', '노트북');
+    a.store.notes.push(note('남길 메모', 'v1'));
+    await a.engine.adoptLocalNotes();
+    await a.engine.syncOnce();
+    const b = await device(server, 'phone', '휴대폰');
+    await b.engine.syncOnce();
+    const bn = b.store.notes[0]!;
+    expect((await b.engine.beginEdit(bn)).kind).toBe('held');
+    const n = a.store.notes[0]!;
+    n.sync = { ...n.sync!, deleting: true };
+    await a.engine.syncOnce(); // 대기
+    edit(b.engine, bn, 'v2 휴대폰에서 고침');
+    await b.engine.syncOnce();
+    await b.engine.endEdit(bn.id);
+    await a.engine.syncOnce();
+    expect(a.store.notes.map((x) => [x.content, !!x.sync?.deleting])).toEqual([['v2 휴대폰에서 고침', false]]);
+    expect(server.notes.get(n.id)!.deleted).toBe(false);
+  });
+});
+

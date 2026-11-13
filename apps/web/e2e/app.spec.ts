@@ -2,6 +2,11 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 
+// 처음 실행 도움말 창은 e2e/help.spec.ts가 따로 확인 → 여기서는 이미 본 것으로
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('memonest.helpShown', '1'));
+});
+
 const HISTORY_LIMIT = 250;
 
 /** 앱 이름 입력 창(+ 메모, + 폴더)에 값을 넣고 Enter로 확인 (2026-11-13: prompt() 대신 앱 자체 창) */

@@ -15,9 +15,10 @@
       <span id="connectivity" aria-live="polite">LOCAL</span>
       <span id="sync-status" aria-live="polite"></span>
       <span id="clock" class="desktop-only">--</span>
-      <button id="language-btn" type="button" title="Language">KO / EN</button>
-      <button id="toggle-btn" type="button" data-i18n="focus">집중 모드 (F6)</button>
-      <button id="split-btn" type="button" data-i18n="split">2패널</button>
+      <button id="language-btn" type="button" title="언어 선택 / Language" data-i18n="language">언어 선택 · KO/EN</button>
+      <button id="toggle-btn" type="button">메모만 보기 (F6)</button>
+      <button id="split-btn" type="button" data-i18n="split">목록+메모 함께</button>
+      <button id="help-btn" type="button" data-i18n="help">도움말</button>
       <button id="update-btn" type="button" class="update-btn" hidden data-i18n="updateAvailable">새 버전 있음</button>
       <button id="account-btn" type="button" data-i18n="account">계정</button>
     </header>
@@ -67,6 +68,11 @@
     </main>
   </div>
   <dialog id="account-dialog" class="account-dialog" aria-label="Account"></dialog>
+  <dialog id="help-dialog" class="account-dialog help-dialog" aria-label="Help">
+    <div class="account-head"><h2 id="help-title">MemoNest 사용법</h2><button type="button" id="help-close">닫기</button></div>
+    <pre id="help-text" class="help-text"></pre>
+    <div class="toolbar"><button type="button" id="help-to-note" data-i18n="helpToNote">이 내용을 메모로 만들기</button></div>
+  </dialog>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>

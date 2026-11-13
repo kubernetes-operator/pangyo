@@ -234,6 +234,8 @@ def main() -> int:
             status, projects = api.call("GET", "/projects")
             return status == 200 and any(p["name"] == "앱 프로젝트" for p in projects)
         results.append(wait("8d. 앱 화면에서 만든 프로젝트 → 서버(웹)", app_project))
+        results.append(wait("8e. 앱에서 기본 프로젝트 이름 바꾸기 → 서버 계정 설정",
+                            lambda: api.call("GET", "/account")[1].get("defaultProjectName") == "앱 기본"))
 
         # 장비 토큰 = base64url 43자. 앱 데이터 폴더의 어떤 파일에도 그 모양의 값이 없어야 함
         device_json = json.loads((data_dir / "device.json").read_text(encoding="utf-8"))
@@ -326,6 +328,16 @@ E2E_JS = r"""
   fill('#name-input', '앱 프로젝트');
   document.querySelector('#name-dialog form').requestSubmit();
   console.log('[e2e] project created');
+  // 기본 프로젝트 이름 바꾸기 (앱 → PATCH /account, 2026-11-13 사용자 확인: 앱에서 실패)
+  await sleep(1000);
+  const select = document.querySelector('#project-select');
+  select.value = '';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await sleep(500);
+  document.querySelector('#rename-project').click();
+  fill('#name-input', '앱 기본');
+  document.querySelector('#name-dialog form').requestSubmit();
+  console.log('[e2e] default renamed');
   for (;;) {
     if ((document.querySelector('#sync-status')?.textContent ?? '').includes('연결 해제됨')) break;
     await sleep(300);
