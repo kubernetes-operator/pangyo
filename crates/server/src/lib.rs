@@ -15,6 +15,7 @@ pub mod error;
 pub mod integrations;
 pub mod metrics;
 pub mod notes;
+pub mod projects;
 pub mod search;
 pub mod security;
 
@@ -229,6 +230,12 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/notes/{id}/lease",
             post(notes::acquire_lease).delete(notes::release_lease),
+        )
+        // 프로젝트 (ADR-0005)
+        .route("/api/v1/projects", get(projects::list))
+        .route(
+            "/api/v1/projects/{id}",
+            put(projects::put).delete(projects::delete),
         )
         // 서버 검색·연관 메모, 자동화 토큰 (로드맵 07)
         .route("/api/v1/search", get(search::search))

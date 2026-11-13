@@ -204,3 +204,10 @@
 - 테스트: 서버 통합 2개(비관리자 403, 기본값 변경 → 기존 계정 적용, 계정별 유지·되돌리기, 새 가입자, 잘못된 값 400, 없는 계정 404 / ADMIN_EMAILS 없으면 아무도 관리자 아님), 설정 단위 1개, OpenAPI 계약 32개, E2E 2개(관리자 화면, 비관리자에겐 없음).
 - 위험: 용량을 사용량보다 작게 정하면 그 계정은 메모를 늘리는 저장이 거절됨(기존 메모는 그대로, 줄이는 저장은 가능).
 
+## Unreleased — 9번 프로젝트 1/3단계: 서버 (ADR-0005 승인, `feature/projects-server`)
+- 변경 파일: `docs/decisions/ADR-0005.md`(승인), `db/postgres/009_projects.sql`(신규: `projects`, `notes.project_id`, 경로 유일성에 프로젝트 포함), `crates/server/src/{projects.rs(신규),notes.rs,lib.rs}`, `crates/server/tests/{projects.rs(신규),api.rs}`, OpenAPI(프로젝트 3개 operation, `Note.projectId`, `NoteChanges.projects`, `PutNote.projectId`, `?projects=1`), 문서(01 #30, 05).
+- 동작: `GET /projects`, `PUT /projects/{id}`(만들기·이름 바꾸기, 클라이언트가 ID), `DELETE /projects/{id}`(빈 프로젝트만, 묘비). 메모 `projectId`(null = 기본, 필드 없음 = 유지). 같은 경로라도 프로젝트가 다르면 허용.
+- 예전 클라이언트 보호: `?projects=1`을 보내지 않으면 기본이 아닌 프로젝트의 메모를 묘비(본문 없음)로 보냄, 예전 클라이언트의 저장은 프로젝트를 바꾸지 않음.
+- 테스트: 프로젝트 통합 2개(만들기·이름·중복·잘못된 이름·경로 중복 허용·빈 프로젝트만 삭제·삭제된 프로젝트 저장 거절·다른 계정 격리 / 변경 목록·예전 클라이언트 묘비·프로젝트 유지·limit=1 페이지 나누기), 이름 규칙 단위 1개, OpenAPI 35개.
+- 아직: 웹 화면(2/3), 데스크톱 파일 배치(3/3). 이 단계만 배포해도 기존 화면은 그대로 동작(프로젝트를 만들 화면이 아직 없음).
+

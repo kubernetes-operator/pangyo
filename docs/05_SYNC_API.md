@@ -17,6 +17,9 @@
 | `GET /api/v1/notes/{id}/similar` | 연관 문서 | notes:read |
 | `GET /api/v1/account/quota` | 본인 사용량 및 요금제 | account:read |
 | `POST /api/v1/integrations/tokens` | n8n 전용 범위/만료 토큰 발급 | owner |
+| `GET /api/v1/projects` | 프로젝트 목록 (ADR-0005, 메모 `projectId` null = 기본) | notes:read |
+| `PUT /api/v1/projects/{id}` | 프로젝트 만들기·이름 바꾸기 (ID는 클라이언트가 정함) | notes:write |
+| `DELETE /api/v1/projects/{id}` | 빈 프로젝트 삭제 (메모가 있으면 409) | notes:write |
 | `GET/PUT /api/v1/admin/settings` | 기본 저장공간 조회·변경 (따로 정하지 않은 계정에 바로 적용) | 관리자(ADMIN_EMAILS) |
 | `GET /api/v1/admin/accounts` | 계정 목록·사용량·용량 | 관리자 |
 | `PUT /api/v1/admin/accounts/{id}/quota` | 계정별 저장공간 (`null` = 기본값으로) | 관리자 |

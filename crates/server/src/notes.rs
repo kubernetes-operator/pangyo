@@ -5,6 +5,8 @@
 //!   기존 메모는 **유효한 편집 임대 + fencing token** 필요(없으면 423)
 //! - 편집 임대: `POST/DELETE /api/v1/notes/{id}/lease` — 편집 시작 시 획득, 주기적 갱신, TTL 후 자동 해제
 //! - 삭제: 묘비(deleted_at)로 남겨 다른 기기에 전달
+//! - 프로젝트(ADR-0005): 메모의 `projectId`(null = 기본). 변경 목록은 `?projects=1`을 보낸 클라이언트에만
+//!   프로젝트 변경과 다른 프로젝트 메모를 보내고, 예전 클라이언트에는 다른 프로젝트 메모를 묘비로 보냄
 //!
 //! 경로/파일명 규칙은 memonest-core(웹·데스크톱과 같은 규칙)를 그대로 사용합니다.
 use axum::{
@@ -24,6 +26,7 @@ use crate::{
     accounts::{AuthVia, CurrentAccount, Scope},
     config::{CHANGES_PAGE_MAX, NOTE_CONTENT_MAX_BYTES},
     error::{ApiError, ApiJson, ApiResult},
+    projects::{require_live_project, ProjectView, PROJECT_COLUMNS},
     AppState,
 };
 
@@ -35,7 +38,7 @@ const HOLDER_LABEL_MAX: usize = 60;
 
 const NOTE_COLUMNS: &str =
     "id, title, folder, format, content, version, content_sha256, size_bytes,
-    created_at, modified_at, (deleted_at IS NOT NULL) AS deleted, change_seq";
+    created_at, modified_at, (deleted_at IS NOT NULL) AS deleted, change_seq, project_id";
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +55,21 @@ pub struct NoteView {
     modified_at: DateTime<Utc>,
     deleted: bool,
     change_seq: i64,
+    /// 프로젝트 (null = 기본, ADR-0005)
+    project_id: Option<Uuid>,
+}
+
+impl NoteView {
+    /// 프로젝트를 모르는 예전 클라이언트용: 기본이 아닌 프로젝트의 메모는 묘비로 (본문 없음)
+    fn hidden_for_legacy(mut self) -> Self {
+        if self.project_id.is_some() {
+            self.deleted = true;
+            self.content.clear();
+            self.size_bytes = 0;
+            self.project_id = None;
+        }
+        self
+    }
 }
 
 #[derive(Deserialize)]
@@ -59,12 +77,17 @@ pub struct ChangesQuery {
     #[serde(default)]
     since: i64,
     limit: Option<i64>,
+    /// 프로젝트를 아는 클라이언트(ADR-0005)는 `projects=1`
+    #[serde(default)]
+    projects: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangesResponse {
     notes: Vec<NoteView>,
+    /// `projects=1`일 때만: 바뀐 프로젝트(묘비 포함)
+    projects: Vec<ProjectView>,
     /// 다음 요청의 `since`
     cursor: i64,
     has_more: bool,
@@ -87,6 +110,14 @@ pub struct PutNoteRequest {
     created_at: Option<DateTime<Utc>>,
     #[serde(default)]
     modified_at: Option<DateTime<Utc>>,
+    /// 필드 없음 = 지금 프로젝트 유지(예전 클라이언트), null = 기본, 값 = 그 프로젝트
+    #[serde(default, deserialize_with = "present")]
+    project_id: Option<Option<Uuid>>,
+}
+
+/// 필드가 있으면 Some(값 또는 null), 없으면 (serde default) None
+fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<Uuid>>, D::Error> {
+    Option::<Uuid>::deserialize(d).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -252,6 +283,11 @@ pub async fn changes(
         .limit
         .unwrap_or(CHANGES_PAGE_MAX)
         .clamp(1, CHANGES_PAGE_MAX);
+    let db = state.db()?;
+    let aware = q
+        .projects
+        .as_deref()
+        .is_some_and(|v| v == "1" || v == "true");
     let mut notes: Vec<NoteView> = sqlx::query_as(&format!(
         "SELECT {NOTE_COLUMNS} FROM notes WHERE owner_id = $1 AND change_seq > $2
          ORDER BY change_seq LIMIT $3"
@@ -259,13 +295,42 @@ pub async fn changes(
     .bind(current.id)
     .bind(q.since)
     .bind(limit + 1)
-    .fetch_all(state.db()?)
+    .fetch_all(db)
     .await?;
-    let has_more = notes.len() as i64 > limit;
-    notes.truncate(limit as usize);
-    let cursor = notes.last().map_or(q.since, |n| n.change_seq);
+    let mut projects: Vec<ProjectView> = if aware {
+        sqlx::query_as(&format!(
+            "SELECT {PROJECT_COLUMNS} FROM projects WHERE owner_id = $1 AND change_seq > $2
+             ORDER BY change_seq LIMIT $3"
+        ))
+        .bind(current.id)
+        .bind(q.since)
+        .bind(limit + 1)
+        .fetch_all(db)
+        .await?
+    } else {
+        Vec::new()
+    };
+    // 메모와 프로젝트는 같은 시퀀스 → 합쳐서 앞에서부터 limit개까지, 커서는 마지막 항목
+    let mut seqs: Vec<i64> = notes
+        .iter()
+        .map(|n| n.change_seq)
+        .chain(projects.iter().map(|p| p.change_seq))
+        .collect();
+    seqs.sort_unstable();
+    let has_more = seqs.len() as i64 > limit;
+    let cursor = if has_more {
+        seqs[limit as usize - 1]
+    } else {
+        seqs.last().copied().unwrap_or(q.since)
+    };
+    notes.retain(|n| n.change_seq <= cursor);
+    projects.retain(|p| p.change_seq <= cursor);
+    if !aware {
+        notes = notes.into_iter().map(NoteView::hidden_for_legacy).collect();
+    }
     Ok(Json(ChangesResponse {
         notes,
+        projects,
         cursor,
         has_more,
     }))
@@ -321,16 +386,24 @@ pub async fn put_note(
 
     let db = state.db()?;
     let mut tx = db.begin().await?;
-    let existing: Option<(Uuid, i64, i64, bool)> = sqlx::query_as(
-        "SELECT owner_id, version, size_bytes, deleted_at IS NOT NULL FROM notes WHERE id = $1 FOR UPDATE",
+    let existing: Option<(Uuid, i64, i64, bool, Option<Uuid>)> = sqlx::query_as(
+        "SELECT owner_id, version, size_bytes, deleted_at IS NOT NULL, project_id FROM notes WHERE id = $1 FOR UPDATE",
     )
     .bind(id)
     .fetch_optional(&mut *tx)
     .await?;
+    // 필드가 없으면 지금 프로젝트 유지 (예전 클라이언트가 저장해도 프로젝트가 바뀌지 않게)
+    let project_id = match req.project_id {
+        Some(p) => p,
+        None => existing.and_then(|e| e.4),
+    };
+    if let Some(project) = project_id {
+        require_live_project(&mut tx, current.id, project).await?;
+    }
     let old_size = match existing {
         // 다른 계정의 메모 ID는 존재 자체를 알려주지 않음
         Some((owner, ..)) if owner != current.id => return Err(not_found()),
-        Some((_, version, old_size, deleted)) => {
+        Some((_, version, old_size, deleted, _)) => {
             require_lease(&mut tx, id, &me, req.fencing_token).await?;
             if req.base_version != version || deleted {
                 return Err(version_conflict(version, deleted));
@@ -345,7 +418,7 @@ pub async fn put_note(
         sqlx::query(
             "UPDATE notes SET title = $2, folder = $3, format = $4, path = $5, content = $6,
                content_sha256 = $7, size_bytes = $8, version = version + 1, modified_at = $9,
-               change_seq = nextval('note_change_seq')
+               project_id = $10, change_seq = nextval('note_change_seq')
              WHERE id = $1",
         )
         .bind(id)
@@ -357,13 +430,14 @@ pub async fn put_note(
         .bind(&hash)
         .bind(size)
         .bind(modified_at)
+        .bind(project_id)
         .execute(&mut *tx)
         .await
     } else {
         sqlx::query(
             "INSERT INTO notes (id, owner_id, title, folder, format, path, content, content_sha256,
-               size_bytes, version, created_at, modified_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11)",
+               size_bytes, version, created_at, modified_at, project_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11, $12)",
         )
         .bind(id)
         .bind(current.id)
@@ -376,6 +450,7 @@ pub async fn put_note(
         .bind(size)
         .bind(req.created_at.unwrap_or(modified_at))
         .bind(modified_at)
+        .bind(project_id)
         .execute(&mut *tx)
         .await
     };
