@@ -23,6 +23,7 @@
     Grafana 대시보드 ConfigMap(`grafana_dashboard=1`). Prometheus가 고르는 `release` 라벨은 클러스터마다 다르므로 `--set monitoring.prometheusRelease=...`.
     **차트에 새 기본값이 추가된 업그레이드는 `--reuse-values` 대신 `--reset-then-reuse-values`**(Helm 3.14+) — `--reuse-values`는 새 차트의
     기본값을 무시해 `monitoring.alerts.*`가 비고, 운영자 webhook이 PrometheusRule을 거부함(2026-11-12 rev 9 실패, 클러스터 변경 없음).
+    **운영 결정(2026-11-13)**: 알림 규칙은 유지하고 통보(Alertmanager 메일 등)는 설정하지 않음 → Prometheus Alerts 화면(`memonest.rules`, Pending→Firing)과 Grafana "MemoNest" 대시보드에서 확인.
     **알림 전달은 클러스터 Alertmanager에 달려 있음** — 2026-11-12 확인 시 공용 Alertmanager가 저장소 설정 누락으로 실행되지 않는 상태(별도 조치 필요).
 - **외부 경로 지연 조사(2026-11-12, 조회·측정만)**: 외부 `/healthz` 응답 0.4~9초, 배포 중 5초 시간 초과가 가끔 나던 원인.
   - 구간별: 서버 내부 p99 5ms / LAN에서 게이트웨이 직접 HTTPS 약 20ms / Cloudflare 경유 TTFB p50 1.4초·p90 4.8초(40회, 모두 게이트웨이 도착 — 유실 아님, 5초 넘게 늦은 것).
