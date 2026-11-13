@@ -57,6 +57,7 @@ pub fn parse_folder(raw: &str, max_depth: usize) -> Result<String, FolderError> 
     for bit in &bits {
         let invalid = bit.is_empty()
             || bit.starts_with('.') // '.', '..', 숨김 폴더
+            || bit.starts_with('@') // 데스크톱의 프로젝트 폴더 표시 (ADR-0005)
             || bit.ends_with('.')
             || bit.chars().any(is_forbidden)
             || is_reserved(bit)

@@ -52,6 +52,7 @@ fn note(id: &str, folder: &str, title: &str, content: &str) -> NoteRecord {
         }],
         redo: vec![],
         sync: None,
+        project_id: None,
     }
 }
 
@@ -318,7 +319,7 @@ fn delete_note_removes_file_and_index_and_keeps_sync_state() {
 #[test]
 fn meta_values_and_folders() {
     let f = fixture();
-    let ws = f.open();
+    let mut ws = f.open();
     assert_eq!(ws.get_meta("locale").unwrap(), None);
     ws.set_meta("locale", &serde_json::json!("en")).unwrap();
     ws.set_meta("locale", &serde_json::json!("ko")).unwrap();
@@ -354,9 +355,123 @@ fn migrations_are_idempotent() {
     let version: i64 = db
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
 }
 
 fn uuid_like(s: &str) -> bool {
     s.len() == 36 && s.chars().filter(|c| *c == '-').count() == 4
+}
+
+// === 프로젝트 (ADR-0005) ===
+const P_WORK: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+
+fn projects(list: &[(&str, &str)]) -> serde_json::Value {
+    serde_json::Value::Array(
+        list.iter()
+            .map(|(id, name)| serde_json::json!({ "id": id, "name": name, "sync": { "synced": false, "dirty": true } }))
+            .collect(),
+    )
+}
+
+#[test]
+fn project_notes_live_under_at_folder_and_follow_renames() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.set_meta("projects", &projects(&[(P_WORK, "업무")]))
+        .unwrap();
+    // 기본 프로젝트와 같은 경로라도 프로젝트가 다르면 따로
+    ws.save_note(&note(ID_A, "회의", "주간", "기본")).unwrap();
+    let mut b = note(ID_B, "회의", "주간", "업무");
+    b.project_id = Some(P_WORK.to_owned());
+    ws.save_note(&b).unwrap();
+    assert_eq!(
+        fs::read_to_string(f.notes.join("회의/주간.md")).unwrap(),
+        "기본"
+    );
+    assert_eq!(
+        fs::read_to_string(f.notes.join("@업무/회의/주간.md")).unwrap(),
+        "업무"
+    );
+
+    let listed = ws.list_notes().unwrap();
+    let by_id = |id: &str| listed.iter().find(|n| n.id == id).unwrap().clone();
+    assert_eq!(by_id(ID_A).project_id, None);
+    assert_eq!(by_id(ID_B).project_id.as_deref(), Some(P_WORK));
+    assert_eq!(by_id(ID_B).folder, "회의");
+
+    // 폴더 목록·만들기: 화면과 같은 '<ID>::<경로>' 키
+    assert_eq!(
+        ws.create_folder(&format!("{P_WORK}::보관/2024")).unwrap(),
+        format!("{P_WORK}::보관/2024")
+    );
+    let folders = ws.list_folders().unwrap();
+    assert!(
+        folders.contains(&format!("{P_WORK}::보관/2024")),
+        "{folders:?}"
+    );
+    assert!(folders.contains(&"회의".to_owned()));
+    assert!(!folders.iter().any(|f| f.starts_with('@')));
+
+    // 프로젝트 이름 바꾸기 → 폴더 이름도, 메모 ID 유지
+    ws.set_meta("projects", &projects(&[(P_WORK, "회사")]))
+        .unwrap();
+    assert!(f.notes.join("@회사/회의/주간.md").is_file());
+    assert!(!f.notes.join("@업무").exists());
+    let listed = ws.list_notes().unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|n| n.id == ID_B)
+            .unwrap()
+            .project_id
+            .as_deref(),
+        Some(P_WORK)
+    );
+
+    // 메모를 기본 프로젝트로 옮기기 (같은 경로 메모가 있으면 충돌)
+    b.project_id = None;
+    assert!(matches!(ws.save_note(&b), Err(CoreError::Conflict(_))));
+    b.folder = "옮김".to_owned();
+    ws.save_note(&b).unwrap();
+    assert!(f.notes.join("옮김/주간.md").is_file());
+
+    // 목록에서 빠진(지워진) 빈 프로젝트 → 빈 폴더째 정리
+    ws.set_meta("projects", &projects(&[])).unwrap();
+    assert!(!f.notes.join("@회사").exists());
+    // 모르는 프로젝트로 저장하면 거절
+    b.project_id = Some(P_WORK.to_owned());
+    assert!(ws.save_note(&b).is_err());
+}
+
+#[test]
+fn outside_at_folder_becomes_a_project_and_keeps_note_ids_on_rename() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.list_notes().unwrap();
+    fs::create_dir_all(f.notes.join("@개인/일기")).unwrap();
+    fs::write(f.notes.join("@개인/일기/오늘.md"), "맑음").unwrap();
+    fs::create_dir_all(f.notes.join("@잘못:이름")).unwrap_or(()); // Windows에서는 만들 수 없음 — 있으면 무시돼야 함
+    let listed = ws.list_notes().unwrap();
+    let today = listed.iter().find(|n| n.title == "오늘").unwrap().clone();
+    let project = today.project_id.clone().expect("새 프로젝트로 등록");
+    // 화면 목록(meta)에도 올릴 변경으로 추가됨
+    let meta = ws.get_meta("projects").unwrap().unwrap();
+    let entry = meta
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == project.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (entry["name"].as_str(), entry["sync"]["dirty"].as_bool()),
+        (Some("개인"), Some(true))
+    );
+
+    // 앱 밖에서 프로젝트 폴더 이름을 바꾸면: 새 프로젝트 + 같은 메모 ID(내용으로 대응)
+    fs::rename(f.notes.join("@개인"), f.notes.join("@사적")).unwrap();
+    let listed = ws.list_notes().unwrap();
+    let moved = listed.iter().find(|n| n.title == "오늘").unwrap();
+    assert_eq!(moved.id, today.id);
+    assert_ne!(moved.project_id, Some(project));
 }

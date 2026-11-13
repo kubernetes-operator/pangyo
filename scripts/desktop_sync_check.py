@@ -10,6 +10,7 @@
   5. 앱 밖 삭제 → 서버에서 바로 지우지 않고 '확인 필요' → 화면에서 '서버에서도 삭제' → 서버 묘비
   6. 장비 토큰이 앱 데이터 폴더(인덱스·device.json)에 평문으로 남지 않음
   7. 웹에서 장비를 폐기하면 앱이 동기화를 멈추고 다시 연결하라고 안내 (메모 파일은 그대로)
+  8. 프로젝트(ADR-0005): 웹 프로젝트 메모 → `@이름` 폴더, 앱 밖 `@폴더` → 서버 프로젝트, 웹에서 이름 바꾸면 폴더 이름도
 사용자의 실제 메모 폴더·앱 데이터·키링은 건드리지 않습니다 (임시 HOME + 격리된 D-Bus 세션의 임시 키링).
 
 사용: make desktop-sync-check  (make db-test-up 필요)
@@ -64,7 +65,7 @@ class Api:
             return e.code, (json.loads(raw) if raw else None)
 
     def notes(self):
-        status, data = self.call("GET", "/notes?since=0")
+        status, data = self.call("GET", "/notes?since=0&projects=1")
         assert status == 200, (status, data)
         return {n["id"]: n for n in data["notes"]}
 
@@ -189,6 +190,33 @@ def main() -> int:
                             lambda: pending_deletion() and not api.notes()[web_id]["deleted"]))
         results.append(wait("5b. 화면에서 '서버에서도 삭제' → 서버 묘비",
                             lambda: api.notes()[web_id]["deleted"] and "[e2e] deletion: " in log()))
+
+        # 8. 프로젝트 (ADR-0005)
+        trip = str(uuid.uuid4())
+        status, _ = api.call("PUT", f"/projects/{trip}", {"name": "여행"})
+        assert status == 200, status
+        status, _ = api.call("PUT", f"/notes/{uuid.uuid4()}", {
+            "baseVersion": 0, "clientId": "web-check", "fencingToken": None, "title": "일정", "folder": "제주",
+            "format": "md", "content": "3일", "createdAt": now, "modifiedAt": now, "projectId": trip})
+        assert status == 200, status
+        trip_note = lambda name: notes / f"@{name}" / "제주" / "일정.md"
+        results.append(wait("8a. 웹 프로젝트 메모 → 데스크톱 @여행/제주/일정.md",
+                            lambda: trip_note("여행").is_file() and trip_note("여행").read_text(encoding="utf-8") == "3일"))
+
+        (notes / "@개인").mkdir()
+        (notes / "@개인" / "일기.md").write_text("맑음\n", encoding="utf-8")
+
+        def outside_project():
+            status, projects = api.call("GET", "/projects")
+            ids = {p["id"] for p in projects if p["name"] == "개인"}
+            diary = by_title().get("일기")
+            return ids and diary and diary.get("projectId") in ids
+        results.append(wait("8b. 앱 밖 @개인 폴더 → 서버 프로젝트 '개인'과 그 메모", outside_project))
+
+        status, _ = api.call("PUT", f"/projects/{trip}", {"name": "제주 여행"})
+        assert status == 200, status
+        results.append(wait("8c. 웹에서 프로젝트 이름 바꾸기 → 데스크톱 폴더 @제주 여행",
+                            lambda: trip_note("제주 여행").is_file() and not (notes / "@여행").exists()))
 
         # 장비 토큰 = base64url 43자. 앱 데이터 폴더의 어떤 파일에도 그 모양의 값이 없어야 함
         device_json = json.loads((data_dir / "device.json").read_text(encoding="utf-8"))

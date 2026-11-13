@@ -48,6 +48,7 @@ export function parseFolder(raw: string, maxDepth: number): string {
     const invalid =
       !bit ||
       bit.startsWith('.') || // '.', '..', 숨김 폴더
+      bit.startsWith('@') || // 데스크톱의 프로젝트 폴더 표시 (ADR-0005)
       bit.endsWith('.') ||
       HAS_FORBIDDEN.test(bit) ||
       isReserved(bit) ||
