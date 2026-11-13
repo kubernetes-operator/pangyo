@@ -19,8 +19,9 @@ const API_PREFIX: &str = "/api/v1";
 const ALLOWED_PATHS: [&str; 4] = ["/notes", "/search", "/account", "/info"];
 /// 상태를 바꾸는 요청에 붙이는 CSRF 방지 헤더 (서버 security.rs CSRF_HEADER)
 const CSRF_HEADER: (&str, &str) = ("X-MemoNest-Request", "1");
-/// 서버 응답 대기 한도 (웹 account/api.ts REQUEST_TIMEOUT_MS와 같음)
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// 서버 응답 대기 한도 (웹 account/api.ts REQUEST_TIMEOUT_MS와 같음).
+/// 국내→Cloudflare 미국 엣지 경유로 응답이 최대 9초까지 걸려(2026-11-12 측정) 30초. 편집 임대(90초)보다 짧게
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// 응답 본문 최대 크기 (서버 본문 제한 1MB + 여유)
 const MAX_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 /// OS 보안 저장소 항목 이름 (데스크톱)

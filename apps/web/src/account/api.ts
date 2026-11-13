@@ -4,7 +4,9 @@
 
 export const API_BASE = '/api/v1'; // 같은 출처 (note.studiobasa.com / 개발 시 Vite 프록시)
 const CSRF_HEADER = { 'X-MemoNest-Request': '1' } as const;
-const REQUEST_TIMEOUT_MS = 10_000; // 서버가 응답하지 않으면 '서버 없음'으로 처리
+// 서버가 응답하지 않으면 '서버 없음'으로 처리. 국내→Cloudflare 미국 엣지 경유로 응답이 최대 9초까지 걸려(2026-11-12 측정) 30초.
+// 편집 임대(90초, 1/3마다 갱신)보다 짧아야 함. 앱(src-tauri remote.rs REQUEST_TIMEOUT)과 같은 값
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface Account {
   id: string;
