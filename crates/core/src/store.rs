@@ -216,6 +216,33 @@ impl FileStore {
         Ok(())
     }
 
+    /// 폴더가 비어 있으면(빈 하위 폴더째) 지웁니다. 메모 파일이 있으면 그대로 둡니다.
+    pub fn remove_folder_if_empty(&self, project: &str, raw: &str) -> Result<()> {
+        let folder = parse_folder(raw, MAX_FOLDER_DEPTH)?;
+        if folder.is_empty() {
+            return Ok(()); // 루트는 지우지 않음
+        }
+        let base = if project.is_empty() {
+            self.root.clone()
+        } else {
+            if !valid_project_name(project) {
+                return Err(CoreError::InvalidLocation(format!(
+                    "{PROJECT_DIR_PREFIX}{project}"
+                )));
+            }
+            self.project_dir(project)
+        };
+        let mut dir = base.clone();
+        for part in folder_ancestors(&folder) {
+            dir = base.join(part);
+            reject_symlink(&dir)?;
+        }
+        if dir.is_dir() {
+            remove_empty_dirs(&dir)?;
+        }
+        Ok(())
+    }
+
     fn project_dir(&self, name: &str) -> PathBuf {
         self.root.join(format!("{PROJECT_DIR_PREFIX}{name}"))
     }

@@ -463,6 +463,15 @@ impl Workspace {
         }
     }
 
+    /// 폴더 지우기 (`경로` 또는 `<프로젝트ID>::<경로>`): 비어 있으면(빈 하위 폴더 포함) 지우고, 메모 파일이 있으면 그대로
+    pub fn delete_folder(&self, raw: &str) -> Result<()> {
+        let (project, path) = match raw.split_once(FOLDER_KEY_SEPARATOR) {
+            None => (String::new(), raw),
+            Some((id, path)) => (self.project_name_of(Some(id))?, path),
+        };
+        self.store.remove_folder_if_empty(&project, path)
+    }
+
     /// 프로젝트 ID → 이름 (없음 = 기본 `""`). 모르는 ID면 오류 (프로젝트 목록을 먼저 저장해야 함)
     fn project_name_of(&self, id: Option<&str>) -> Result<String> {
         let Some(id) = id.filter(|i| !i.is_empty()) else {

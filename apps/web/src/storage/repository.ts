@@ -23,6 +23,8 @@ export interface NoteRepository {
   listFolders(): Promise<FolderRecord[]>;
   /** 정규화된 폴더 경로 하나를 저장 (상위 폴더는 호출 쪽에서 순서대로 저장) */
   saveFolder(path: string): Promise<void>;
+  /** 폴더 지우기 (2026-11-13 사용 의견): 웹은 폴더 기록, 파일 저장소는 비어 있는 폴더만 (메모가 남아 있으면 그대로) */
+  deleteFolder(path: string): Promise<void>;
   getMeta<T>(key: string): Promise<T | undefined>;
   setMeta(key: string, value: unknown): Promise<void>;
 }

@@ -86,6 +86,12 @@ fn create_folder(state: State<'_, AppState>, path: String) -> CommandResult<Stri
     with_workspace(&state, |ws| ws.create_folder(&path))
 }
 
+/// 비어 있는 폴더 지우기 (메모 파일이 남아 있으면 그대로)
+#[tauri::command]
+fn delete_folder(state: State<'_, AppState>, path: String) -> CommandResult<()> {
+    with_workspace(&state, |ws| ws.delete_folder(&path))
+}
+
 #[tauri::command]
 fn get_meta(state: State<'_, AppState>, key: String) -> CommandResult<Option<serde_json::Value>> {
     with_workspace(&state, |ws| ws.get_meta(&key))
@@ -267,6 +273,7 @@ pub fn run() {
             delete_note,
             list_folders,
             create_folder,
+            delete_folder,
             get_meta,
             set_meta,
             list_external_deletions,

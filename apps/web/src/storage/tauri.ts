@@ -14,6 +14,7 @@ export const COMMANDS = {
   deleteNote: 'delete_note',
   listFolders: 'list_folders',
   createFolder: 'create_folder',
+  deleteFolder: 'delete_folder',
   getMeta: 'get_meta',
   setMeta: 'set_meta',
   // 바깥 삭제 확인 (ADR-0004)
@@ -135,6 +136,9 @@ export async function createTauriRepository(): Promise<NoteRepository> {
     },
     async saveFolder(path) {
       await invoke(COMMANDS.createFolder, { path });
+    },
+    async deleteFolder(path) {
+      await invoke(COMMANDS.deleteFolder, { path });
     },
     async getMeta<T>(key: string) {
       return ((await invoke<T | null>(COMMANDS.getMeta, { key })) ?? undefined) as T | undefined;

@@ -86,3 +86,14 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 .help-dialog{width:min(720px,calc(100vw - 32px))}
 .help-text{white-space:pre-wrap;font-family:ui-monospace,Consolas,'D2Coding',monospace;font-size:13px;line-height:1.6;max-height:60dvh;overflow:auto;background:var(--panel);padding:12px;border-radius:4px}
 #split-btn[hidden]{display:none}
+/* 트리 확장 메뉴·드래그 앤 드롭 (사용 의견 3차) */
+.tree-row{display:flex;align-items:center}
+.tree-row>button:first-child{flex:1;min-width:0}
+.tree .row-menu{flex:0 0 auto;width:auto;padding:2px 8px;color:var(--muted);opacity:.35}
+.tree-row:hover .row-menu,.tree .row-menu:focus-visible,.tree-row:has([aria-selected="true"]) .row-menu{opacity:1}
+@media(hover:none){.tree .row-menu{opacity:1}}
+.tree-row.drop-target{outline:2px dashed var(--ink);outline-offset:-2px;background:#f0f0f0}
+.tree-menu{position:fixed;z-index:20;display:flex;flex-direction:column;min-width:160px;background:var(--paper);border:1px solid var(--ink);border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:4px}
+.tree-menu button{border:0;text-align:left;background:transparent;padding:8px 10px;font-size:13px}
+.tree-menu button:hover,.tree-menu button:focus-visible{background:#eee}
+.tree-menu .danger-text{color:#a00}

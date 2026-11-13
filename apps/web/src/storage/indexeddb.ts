@@ -74,6 +74,9 @@ export const indexedDbRepository: NoteRepository = {
   async saveFolder(path) {
     await query(STORES.folders, 'readwrite', (s) => s.put({ path }));
   },
+  async deleteFolder(path) {
+    await query(STORES.folders, 'readwrite', (s) => s.delete(path));
+  },
   async getMeta<T>(key: string) {
     const record = await query<MetaRecord<T> | undefined>(STORES.meta, 'readonly', (s) => s.get(key));
     return record?.value;
