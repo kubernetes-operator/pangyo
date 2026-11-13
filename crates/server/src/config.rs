@@ -50,6 +50,9 @@ pub struct Config {
     pub lease_ttl_secs: i64,
     /// `DOWNLOADS_DIR` — 설치 파일 폴더(manifest.json 포함). 없으면 다운로드 기능 끔
     pub downloads_dir: Option<PathBuf>,
+    /// `ADMIN_EMAILS` — 관리자 이메일(쉼표 구분, 소문자 정규화). Kubernetes에서는 사용자가 만든 Secret에서 주입.
+    /// 비어 있으면 관리자 화면은 아무에게도 열리지 않음
+    pub admin_emails: Vec<String>,
 }
 
 impl Default for Config {
@@ -64,6 +67,7 @@ impl Default for Config {
             web_root: None,
             lease_ttl_secs: DEFAULT_LEASE_TTL_SECS,
             downloads_dir: None,
+            admin_emails: Vec::new(),
         }
     }
 }
@@ -90,10 +94,42 @@ impl Config {
             web_root: env::var_os("WEB_ROOT").map(PathBuf::from),
             lease_ttl_secs: num("LEASE_TTL_SECS", d.lease_ttl_secs).max(1),
             downloads_dir: env::var_os("DOWNLOADS_DIR").map(PathBuf::from),
+            admin_emails: parse_admin_emails(&env::var("ADMIN_EMAILS").unwrap_or_default()),
         }
+    }
+
+    pub fn is_admin_email(&self, email: Option<&str>) -> bool {
+        email.is_some_and(|e| {
+            let e = e.trim().to_lowercase();
+            self.admin_emails.contains(&e)
+        })
     }
 
     pub fn free_quota_bytes(&self) -> i64 {
         self.free_storage_mb.saturating_mul(1024 * 1024)
+    }
+}
+
+/// 쉼표·공백으로 구분된 관리자 이메일 목록 (빈 항목 제외, 소문자)
+pub fn parse_admin_emails(raw: &str) -> Vec<String> {
+    raw.split([',', ' ', '\n', ';'])
+        .map(|e| e.trim().to_lowercase())
+        .filter(|e| e.contains('@'))
+        .collect()
+}
+
+#[cfg(test)]
+mod admin_tests {
+    #[test]
+    fn admin_emails_are_normalized() {
+        let c = super::Config {
+            admin_emails: super::parse_admin_emails(" Admin@Example.com, ,ops@example.com\n"),
+            ..Default::default()
+        };
+        assert_eq!(c.admin_emails, ["admin@example.com", "ops@example.com"]);
+        assert!(c.is_admin_email(Some("ADMIN@example.com")));
+        assert!(!c.is_admin_email(Some("user@example.com")));
+        assert!(!c.is_admin_email(None));
+        assert!(!super::Config::default().is_admin_email(Some("admin@example.com")));
     }
 }

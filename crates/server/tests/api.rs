@@ -179,7 +179,7 @@ async fn every_openapi_operation_matches_server() {
     }
     assert!(failures.is_empty(), "계약 불일치:\n{}", failures.join("\n"));
     assert_eq!(
-        checked, 28,
+        checked, 32,
         "openapi.json operation 수가 바뀌면 이 값과 docs/05_SYNC_API.md를 함께 갱신"
     );
 }

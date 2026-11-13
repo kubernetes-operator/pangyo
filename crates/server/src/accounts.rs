@@ -56,6 +56,16 @@ pub struct AccountView {
     quota_bytes: i64,
     used_bytes: i64,
     created_at: DateTime<Utc>,
+    /// 관리자 화면(저장공간 설정)을 보여 줄지. ADMIN_EMAILS 기준
+    #[sqlx(skip)]
+    is_admin: bool,
+}
+
+impl AccountView {
+    fn with_admin(mut self, config: &crate::config::Config) -> Self {
+        self.is_admin = config.is_admin_email(self.email.as_deref());
+        self
+    }
 }
 
 #[derive(Serialize)]
@@ -321,14 +331,14 @@ pub async fn register(
          RETURNING id, email, display_name, auth_provider, tier, quota_bytes, used_bytes, created_at",
     )
     .bind(Uuid::new_v4())
-    .bind(state.config.free_quota_bytes())
+    .bind(crate::admin::default_quota_bytes(&mut *tx, &state.config).await?)
     .bind(&email)
     .bind(&display_name)
     .bind(&hash)
     .fetch_one(&mut *tx)
     .await;
     let account = match inserted {
-        Ok(a) => a,
+        Ok(a) => a.with_admin(&state.config),
         Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
             return Err(ApiError::new(
                 StatusCode::CONFLICT,
@@ -381,7 +391,10 @@ pub async fn login(
     let mut tx = db.begin().await?;
     let jar = start_session(&state, &mut tx, jar, id, &headers).await?;
     tx.commit().await?;
-    Ok((jar, Json(load_account(db, id).await?)))
+    Ok((
+        jar,
+        Json(load_account(db, id).await?.with_admin(&state.config)),
+    ))
 }
 
 pub async fn logout(
@@ -406,7 +419,11 @@ pub async fn me(
     current: CurrentAccount,
 ) -> ApiResult<Json<AccountView>> {
     current.require(Scope::Account)?;
-    Ok(Json(load_account(state.db()?, current.id).await?))
+    Ok(Json(
+        load_account(state.db()?, current.id)
+            .await?
+            .with_admin(&state.config),
+    ))
 }
 
 pub async fn quota(

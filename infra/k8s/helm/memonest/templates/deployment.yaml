@@ -42,6 +42,10 @@ spec:
             {{- if .Values.downloads.enabled }}
             - {name: DOWNLOADS_DIR, value: /downloads}
             {{- end }}
+            {{- with .Values.admin.existingSecret }}
+            - name: ADMIN_EMAILS
+              valueFrom: {secretKeyRef: {name: {{ . | quote }}, key: {{ $.Values.admin.emailsKey | quote }}, optional: true}}
+            {{- end }}
             - name: DB_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.database.existingSecret | quote }}, key: {{ .Values.database.passwordKey | quote }}}}
             - name: DATABASE_URL

@@ -8,6 +8,7 @@
 //! 동기화, 저장소, 동시 편집 잠금(요구 #28, 승인 전 금지)은 아직 없습니다.
 
 pub mod accounts;
+pub mod admin;
 pub mod config;
 pub mod downloads;
 pub mod error;
@@ -22,7 +23,7 @@ use std::{
     time::Duration,
 };
 
-use axum::routing::{delete, post};
+use axum::routing::{delete, post, put};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -239,6 +240,16 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/integrations/tokens/{id}",
             delete(integrations::revoke_token),
+        )
+        // 관리자: 기본 저장공간·계정별 저장공간 (ADMIN_EMAILS)
+        .route(
+            "/api/v1/admin/settings",
+            get(admin::get_settings).put(admin::put_settings),
+        )
+        .route("/api/v1/admin/accounts", get(admin::list_accounts))
+        .route(
+            "/api/v1/admin/accounts/{id}/quota",
+            put(admin::put_account_quota),
         )
         // 설치 파일 목록·링크 발급
         .route("/api/v1/downloads", get(downloads::list))

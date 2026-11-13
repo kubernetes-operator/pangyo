@@ -17,6 +17,8 @@ export interface Account {
   quotaBytes: number;
   usedBytes: number;
   createdAt: string;
+  /** 관리자 화면(시스템) 표시 여부 */
+  isAdmin?: boolean;
 }
 export interface Providers {
   local: boolean;
@@ -192,6 +194,31 @@ export const downloadApi = {
   list: () => request<{ version: string; files: DownloadFile[] }>('GET', '/downloads'),
   link: (id: string) =>
     request<{ url: string; expiresAt: string }>('POST', `/downloads/${encodeURIComponent(id)}/link`),
+};
+
+export interface AdminSettings {
+  defaultQuotaMb: number;
+  envDefaultQuotaMb: number;
+  updatedAccounts: number;
+}
+export interface AdminAccount {
+  id: string;
+  email: string | null;
+  displayName: string;
+  usedBytes: number;
+  quotaBytes: number;
+  quotaCustom: boolean;
+  createdAt: string;
+}
+
+/** 관리자: 기본 저장공간·계정별 저장공간 (2026-11-13 사용 의견 6번) */
+export const adminApi = {
+  settings: () => request<AdminSettings>('GET', '/admin/settings'),
+  setDefaultQuota: (defaultQuotaMb: number) => request<AdminSettings>('PUT', '/admin/settings', { defaultQuotaMb }),
+  accounts: () => request<{ accounts: AdminAccount[] }>('GET', '/admin/accounts'),
+  /** null이면 기본값으로 되돌림 */
+  setQuota: (id: string, quotaMb: number | null) =>
+    request<AdminAccount>('PUT', `/admin/accounts/${encodeURIComponent(id)}/quota`, { quotaMb }),
 };
 
 /** 104857600 → '100 MB' */
