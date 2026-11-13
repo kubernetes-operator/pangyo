@@ -253,3 +253,13 @@
 - 테스트: `make check` 통과(Vitest 97 — 삭제 대기 2개, Playwright 25 — 도움말·상단 버튼 2개), `make desktop-sync-check` 통과(8e 추가).
 - 다음 단계: 트리 확장 메뉴·드래그 앤 드롭·폴더 삭제·내용 포함 프로젝트 삭제(2단계), 7일 휴지통·프로젝트 전체 다운로드(3단계).
 
+## Unreleased — 사용 의견 3차 2단계: 트리 편집 (`feature/tree-editing`)
+- 변경 파일: `apps/web/src/domain/{tree-ops.ts(신규),tree-ops.test.ts(신규)}`, `apps/web/src/ui/{app.ts,name-dialog.ts(askMove),main.css}`, `apps/web/src/settings.ts`, `apps/web/src/sync/engine.ts`, 저장소 `deleteFolder`(`storage/{repository,indexeddb,tauri}.ts`, Tauri `delete_folder`, core `Workspace::delete_folder`·`FileStore::remove_folder_if_empty`), 테스트(core 1, Vitest 3, E2E 1 + 기존 프로젝트 E2E 갱신).
+- 트리 확장 메뉴: 각 행의 **⋯** 버튼(또는 오른쪽 클릭, 모바일은 길게 누르기) → **이름 바꾸기 · 이동… · 삭제**. 메모와 폴더 모두. 이동 창에서 프로젝트와 폴더를 고름(폴더 이동은 2단계를 넘거나 자기 안으로 가는 곳은 고를 수 없음).
+- 드래그 앤 드롭: 메모·폴더를 폴더(또는 맨 위 `/`)에 놓으면 이동(데스크톱 브라우저·앱; 모바일은 메뉴의 이동).
+- 폴더 이름 바꾸기·이동: 안의 메모와 빈 하위 폴더까지 함께. 같은 이름이 있으면 거절.
+- 폴더 삭제: 경고 창(안의 메모 수) → 확인하면 메모까지 삭제(동기화 메모는 삭제 대기).
+- 프로젝트 삭제: 메모가 있으면 경고 창(폴더·메모 수) → 확인하면 내용까지 삭제. 동기화는 메모가 모두 지워진 뒤 프로젝트를 지움.
+- 지운 항목 1주일 보관(휴지통)·프로젝트 전체 다운로드는 3단계.
+- 테스트: `make check` 통과(Vitest 100, Playwright 26), `make desktop-sync-check` 통과.
+

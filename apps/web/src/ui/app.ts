@@ -10,7 +10,8 @@ import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type
 import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
-import { askConfirm, askName } from './name-dialog';
+import { askConfirm, askMove, askName, type MoveTarget } from './name-dialog';
+import { depthOf, folderMoveProblem, isWithin, joinPath, lastSegment, parentOf, remap } from '../domain/tree-ops';
 import { HELP_MARKDOWN, HELP_TITLE } from './help';
 import { buildLabel, pickUpdate, type UpdateState } from './app-update';
 import {
@@ -209,22 +210,64 @@ function displayTree(): void {
     .filter((f) => f.project === state.project)
     .map((f) => f.path);
   const folderPaths = [...new Set([...projectFolders, ...rows.flatMap((n) => folderAncestors(n.folder))])].sort();
+  /** 한 행 = 항목 버튼 + ⋯ 메뉴 버튼. 오른쪽 클릭(모바일은 길게 누르기)도 메뉴. 드래그해서 폴더에 놓으면 이동 */
   const makeButton = (
     title: string,
     cls: string,
     indent: number,
     selected: boolean,
     handler: () => void,
+    item: TreeItem,
   ) => {
+    const row = document.createElement('div');
+    row.className = 'tree-row';
     const b = document.createElement('button');
     b.type = 'button';
     b.className = `${cls} tree-indent-${Math.min(indent, 3)}`;
     b.textContent = title;
     b.setAttribute('aria-selected', String(selected));
     b.addEventListener('click', handler);
-    tree.append(b);
+    row.append(b);
+    if (item.kind !== 'root') {
+      b.draggable = true;
+      b.addEventListener('dragstart', (e) => {
+        dragging = item;
+        e.dataTransfer?.setData('text/plain', title);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      });
+      b.addEventListener('dragend', () => (dragging = null));
+      b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openTreeMenu(item, b);
+      });
+      const menu = document.createElement('button');
+      menu.type = 'button';
+      menu.className = 'row-menu';
+      menu.textContent = '⋯';
+      menu.title = WORDS[state.locale].menu;
+      menu.setAttribute('aria-label', `${WORDS[state.locale].menu}: ${title}`);
+      menu.addEventListener('click', () => openTreeMenu(item, menu));
+      row.append(menu);
+    }
+    if (item.kind !== 'note') {
+      const target = item.kind === 'root' ? '' : item.path;
+      b.addEventListener('dragover', (e) => {
+        if (!dragging || !canDrop(dragging, target)) return;
+        e.preventDefault();
+        row.classList.add('drop-target');
+      });
+      b.addEventListener('dragleave', () => row.classList.remove('drop-target'));
+      b.addEventListener('drop', (e) => {
+        e.preventDefault();
+        row.classList.remove('drop-target');
+        const moving = dragging;
+        dragging = null;
+        if (moving) void dropOnFolder(moving, target);
+      });
+    }
+    tree.append(row);
   };
-  makeButton('▸ /', 'folder', 0, state.selectedFolder === '', () => selectFolder(''));
+  makeButton('▸ /', 'folder', 0, state.selectedFolder === '', () => selectFolder(''), { kind: 'root' });
   // 폴더와 노트를 계층 경로 순서대로 표시합니다(파일 선택은 UUID 기준).
   const byFolder = new Map<string, Note[]>();
   for (const note of rows) {
@@ -235,16 +278,26 @@ function displayTree(): void {
   const showNotes = (folder: string, depth: number) => {
     const notes = (byFolder.get(folder) ?? []).sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
     for (const note of notes) {
-      makeButton(`· ${note.title}.${note.format}`, 'note', depth, note.id === state.selectedId, () => {
-        void selectNote(note.id);
-      });
+      makeButton(
+        `· ${note.title}.${note.format}`,
+        'note',
+        depth,
+        note.id === state.selectedId,
+        () => void selectNote(note.id),
+        { kind: 'note', id: note.id },
+      );
     }
   };
   showNotes('', 1);
   for (const folder of folderPaths) {
     const depth = folder.split('/').length;
-    makeButton('▸ ' + folder.split('/').at(-1), 'folder', depth, state.selectedFolder === folder, () =>
-      selectFolder(folder),
+    makeButton(
+      '▸ ' + folder.split('/').at(-1),
+      'folder',
+      depth,
+      state.selectedFolder === folder,
+      () => selectFolder(folder),
+      { kind: 'folder', path: folder },
     );
     showNotes(folder, Math.min(depth + 1, 3));
   }
@@ -963,16 +1016,24 @@ async function renameProject(id: string, name: string): Promise<void> {
   void state.sync?.syncOnce();
 }
 
-/** 빈 프로젝트만 지움. 서버에 있으면 지우기 요청을 올리고, 다른 기기가 메모를 넣었으면 서버가 거절 → 되살림 */
+/** 프로젝트 지우기: 안에 메모가 있으면 경고 후 폴더·메모까지 (메모는 삭제 대기 → 다 지워진 뒤 프로젝트) */
 async function deleteProject(id: string): Promise<void> {
   const project = state.projects.find((p) => p.id === id);
   if (!project) return;
-  const count = state.notes.filter((n) => inProject(n, id) && !n.sync?.deleting).length;
-  if (count) {
-    $('project-status').textContent = WORDS[state.locale].projectNotEmpty.replace('{n}', String(count));
-    return;
+  const w = WORDS[state.locale];
+  const notes = visibleNotes().filter((n) => inProject(n, id));
+  if (notes.length) {
+    const ok = await askConfirm({
+      message: w.deleteProjectConfirm.replace('{name}', project.name).replace('{n}', String(notes.length)),
+      ok: w.deleteNoteOk,
+      cancel: w.cancel,
+      danger: true,
+    });
+    if (!ok || !(await deleteNotes(notes))) return;
   }
-  // 이 프로젝트의 빈 폴더 기록도 지움 (folders 저장소는 지우기 API가 없어 목록에서만 제외 → 같은 ID가 다시 쓰이지 않음)
+  // 이 프로젝트의 빈 폴더 기록도 지움
+  for (const key of state.folders.map((f) => f.path).filter((k) => parseFolderKey(k).project === id))
+    await repo.deleteFolder(key).catch(console.error);
   state.folders = state.folders.filter((f) => parseFolderKey(f.path).project !== id);
   if (project.sync.synced) project.sync = { ...project.sync, deleting: true };
   else state.projects = state.projects.filter((p) => p.id !== id);
@@ -1079,10 +1140,13 @@ async function moveNoteToFolder(target: string): Promise<void> {
   renderNoteFolder();
 }
 
-/** 메모 삭제: 서버에 올라간 메모는 서버에서도 지움(임대 필요, 다른 기기가 고쳤으면 지우지 않음) */
+/** 메모 삭제(확인 창). 서버에 올라간 메모는 삭제 대기로 → 동기화가 서버에서도 지움 */
 async function deleteCurrentNote(): Promise<void> {
   const note = state.note;
-  if (!note) return;
+  if (note) await deleteNoteWithConfirm(note);
+}
+
+async function deleteNoteWithConfirm(note: Note): Promise<void> {
   const w = WORDS[state.locale];
   const ok = await askConfirm({
     message: w.deleteNoteConfirm.replace('{title}', `${note.title}.${note.format}`),
@@ -1090,39 +1154,338 @@ async function deleteCurrentNote(): Promise<void> {
     cancel: w.cancel,
     danger: true,
   });
-  if (!ok || state.note !== note) return;
-  const synced = (note.sync?.version ?? 0) > 0;
-  if (synced && !state.sync) {
+  if (ok) await deleteNotes([note]);
+}
+
+/**
+ * 메모 여러 개 지우기 (확인은 호출 쪽). 동기화된 메모는 삭제 대기(화면에서 숨김), 아니면 바로 지움.
+ * 동기화 중이 아닌데 서버에 올라간 메모가 있으면 지우지 않고 false
+ */
+async function deleteNotes(notes: Note[]): Promise<boolean> {
+  const w = WORDS[state.locale];
+  const synced = (n: Note) => (n.sync?.version ?? 0) > 0;
+  if (notes.some(synced) && !state.sync) {
     $('project-status').textContent = w.deleteOffline; // 로그인·장비 연결 전에는 서버 기록을 지울 수 없음
-    return;
+    return false;
   }
-  releaseEdit();
-  endSession();
-  await flushSave();
-  state.unsaved.delete(note.id);
-  if (synced) {
-    // 삭제 대기: 화면에서 숨기고 동기화가 서버에서 지움. 다른 기기가 열고 있으면 그 기기가 닫을 때까지 기다렸다 자동으로
-    note.sync = { ...note.sync!, deleting: true, conflict: null, error: null };
-    await repo.saveNote(note);
-    void state.sync!.syncOnce().then(() => {
-      if (state.notes.some((n) => n.id === note.id && n.sync?.deleting))
+  const current = state.note;
+  if (current && notes.includes(current)) {
+    releaseEdit();
+    endSession();
+    await flushSave();
+  }
+  for (const note of notes) {
+    state.unsaved.delete(note.id);
+    if (synced(note)) {
+      note.sync = { ...note.sync!, deleting: true, conflict: null, error: null };
+      await repo.saveNote(note);
+    } else {
+      state.notes = state.notes.filter((n) => n.id !== note.id);
+      await repo.deleteNote(note.id);
+    }
+  }
+  if (state.sync && notes.some(synced)) {
+    void state.sync.syncOnce().then(() => {
+      if (state.notes.some((n) => notes.includes(n) && n.sync?.deleting))
         $('project-status').textContent = w.deleteQueued;
     });
-  } else {
-    state.notes = state.notes.filter((n) => n.id !== note.id);
-    await repo.deleteNote(note.id);
   }
-  state.selectedId = null;
-  state.note = null;
-  state.lease = null;
-  const next = state.notes
-    .filter((n) => inProject(n, state.project) && !n.sync?.deleting)
-    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))[0];
-  if (next) await selectNote(next.id);
-  else {
-    renderEditor();
+  if (current && notes.includes(current)) {
+    state.selectedId = null;
+    state.note = null;
+    state.lease = null;
+    const next = state.notes
+      .filter((n) => inProject(n, state.project) && !n.sync?.deleting)
+      .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))[0];
+    if (next) await selectNote(next.id);
+    else renderEditor();
+  }
+  displayTree();
+  return true;
+}
+
+// === 트리 확장 메뉴·드래그 앤 드롭 (2026-11-13 사용 의견) ===
+type TreeItem = { kind: 'root' } | { kind: 'note'; id: string } | { kind: 'folder'; path: string };
+let dragging: TreeItem | null = null;
+
+const visibleNotes = () => state.notes.filter((n) => !n.sync?.deleting);
+const notesIn = (project: string, folder: string) =>
+  visibleNotes().filter((n) => inProject(n, project) && isWithin(n.folder, folder));
+
+/** 프로젝트의 폴더 목록 (빈 폴더 기록 + 메모의 폴더) */
+function foldersOf(project: string): string[] {
+  const own = state.folders.map((x) => parseFolderKey(x.path)).filter((f) => f.project === project);
+  const fromNotes = visibleNotes()
+    .filter((n) => inProject(n, project))
+    .flatMap((n) => folderAncestors(n.folder));
+  return [...new Set([...own.map((f) => f.path), ...fromNotes])].filter(Boolean).sort();
+}
+
+function canDrop(item: TreeItem, target: string): boolean {
+  if (item.kind === 'note') {
+    const note = state.notes.find((n) => n.id === item.id);
+    return !!note && note.folder !== target;
+  }
+  if (item.kind === 'folder')
+    return folderMoveProblem(item.path, target, foldersOf(state.project), SETTINGS.maxFolderDepth) === null;
+  return false;
+}
+
+async function dropOnFolder(item: TreeItem, target: string): Promise<void> {
+  if (item.kind === 'note') {
+    const note = state.notes.find((n) => n.id === item.id);
+    if (note) await moveNotesTo([note], projectOf(note), target, note.folder);
+  } else if (item.kind === 'folder') {
+    await moveFolder(item.path, state.project, target);
+  }
+}
+
+function closeTreeMenu(): void {
+  document.getElementById('tree-menu')?.remove();
+}
+
+function openTreeMenu(item: TreeItem, anchor: HTMLElement): void {
+  closeTreeMenu();
+  const w = WORDS[state.locale];
+  const menu = document.createElement('div');
+  menu.id = 'tree-menu';
+  menu.className = 'tree-menu';
+  menu.setAttribute('role', 'menu');
+  const action = (label: string, id: string, run: () => Promise<void> | void, danger = false) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = id;
+    b.setAttribute('role', 'menuitem');
+    b.textContent = label;
+    if (danger) b.className = 'danger-text';
+    b.addEventListener('click', () => {
+      closeTreeMenu();
+      void run();
+    });
+    menu.append(b);
+  };
+  action(w.renameItem, 'menu-rename', () => renameItem(item));
+  action(w.moveItem, 'menu-move', () => moveItem(item));
+  action(w.deleteItem, 'menu-delete', () => deleteItem(item), true);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.min(rect.bottom + 2, window.innerHeight - 130)}px`;
+  menu.style.left = `${Math.max(4, Math.min(rect.left, window.innerWidth - 180))}px`;
+  document.body.append(menu);
+  (menu.firstElementChild as HTMLButtonElement | null)?.focus();
+  const close = (e: Event) => {
+    if (e instanceof KeyboardEvent ? e.key === 'Escape' : !menu.contains(e.target as Node)) {
+      closeTreeMenu();
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', close, true);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', close, true);
+  });
+}
+
+async function renameItem(item: TreeItem): Promise<void> {
+  const w = WORDS[state.locale];
+  if (item.kind === 'note') {
+    const note = state.notes.find((n) => n.id === item.id);
+    if (!note) return;
+    const value = await askName({ label: w.renameNote, initial: note.title, ok: w.rename, cancel: w.cancel });
+    if (!value) return;
+    const title = safeFilename(value);
+    const clash = visibleNotes().find(
+      (n) => n.id !== note.id && inProject(n, projectOf(note)) && n.folder === note.folder && n.title === title && n.format === note.format,
+    );
+    if (clash) {
+      $('project-status').textContent = w.noteClash.replace('{name}', `${title}.${note.format}`);
+      return;
+    }
+    note.title = title;
+    note.modifiedAt = nowISO();
+    state.sync?.markDirty(note);
+    await repo.saveNote(note);
+    if (note === state.note) renderEditor();
+    displayTree();
+  } else if (item.kind === 'folder') {
+    const value = await askName({
+      label: w.renameFolder,
+      initial: lastSegment(item.path),
+      ok: w.rename,
+      cancel: w.cancel,
+      validate: (v) => {
+        try {
+          if (v.includes('/') || v.includes('\\')) throw new FolderError('invalid', w.folderHint);
+          parseFolder(v, 1);
+          return null;
+        } catch (e) {
+          return e instanceof FolderError ? e.message : String(e);
+        }
+      },
+    });
+    if (!value) return;
+    const target = joinPath(parentOf(item.path), parseFolder(value, 1));
+    if (target === item.path) return;
+    await relocateFolder(item.path, state.project, target);
+  }
+}
+
+async function moveItem(item: TreeItem): Promise<void> {
+  const w = WORDS[state.locale];
+  const note = item.kind === 'note' ? state.notes.find((n) => n.id === item.id) : undefined;
+  if (item.kind === 'root' || (item.kind === 'note' && !note)) return;
+  const fromProject = note ? projectOf(note) : state.project;
+  const initial: MoveTarget = { project: fromProject, folder: note ? note.folder : parentOf((item as { path: string }).path) };
+  const target = await askMove({
+    title: w.moveTitle,
+    projectLabel: w.project,
+    folderLabel: w.folderLabel,
+    projects: [DEFAULT_PROJECT, ...liveProjects().map((p) => p.id)].map((id) => ({ id, label: projectName(id) })),
+    folders: (project) =>
+      ['', ...foldersOf(project)].map((path) => ({
+        path,
+        label: path ? '/' + path : w.rootFolder,
+        // 폴더 이동: 자기 안이나 2단계를 넘는 곳은 고를 수 없음
+        disabled:
+          item.kind === 'folder' &&
+          folderMoveProblem(item.path, path, foldersOf(project), SETTINGS.maxFolderDepth, project === fromProject) !== null &&
+          !(project === fromProject && parentOf(item.path) === path),
+      })),
+    initial,
+    ok: w.moveTo2,
+    cancel: w.cancel,
+  });
+  if (!target) return;
+  if (note) await moveNotesTo([note], target.project, target.folder, note.folder);
+  else if (item.kind === 'folder') await moveFolder(item.path, target.project, target.folder);
+}
+
+async function deleteItem(item: TreeItem): Promise<void> {
+  const w = WORDS[state.locale];
+  if (item.kind === 'note') {
+    const note = state.notes.find((n) => n.id === item.id);
+    if (note) await deleteNoteWithConfirm(note);
+  } else if (item.kind === 'folder') {
+    const notes = notesIn(state.project, item.path);
+    const ok = await askConfirm({
+      message: w.deleteFolderConfirm.replace('{name}', item.path).replace('{n}', String(notes.length)),
+      ok: w.deleteNoteOk,
+      cancel: w.cancel,
+      danger: true,
+    });
+    if (!ok) return;
+    if (!(await deleteNotes(notes))) return;
+    await forgetFolders(state.project, item.path);
+    if (isWithin(state.selectedFolder, item.path)) selectFolder(parentOf(item.path));
     displayTree();
   }
+}
+
+/** 폴더 기록(빈 폴더)을 folder와 그 아래까지 지움. 파일 저장소는 비어 있는 폴더만 실제로 지움 */
+async function forgetFolders(project: string, folder: string): Promise<void> {
+  const keys = state.folders
+    .map((f) => f.path)
+    .filter((key) => {
+      const k = parseFolderKey(key);
+      return k.project === project && isWithin(k.path, folder);
+    });
+  state.folders = state.folders.filter((f) => !keys.includes(f.path));
+  // 깊은 것부터 (파일 저장소에서 상위 폴더가 먼저 지워지지 않게)
+  for (const key of [...keys, folderKey(project, folder)].sort((a, b) => b.length - a.length))
+    await repo.deleteFolder(key).catch(console.error);
+}
+
+/** 메모들을 project/folder로. 같은 이름이 있으면 하나도 옮기지 않음 */
+async function moveNotesTo(notes: Note[], project: string, folder: string, _from: string): Promise<boolean> {
+  const w = WORDS[state.locale];
+  const ids = new Set(notes.map((n) => n.id));
+  for (const note of notes) {
+    const clash = visibleNotes().find(
+      (n) => !ids.has(n.id) && inProject(n, project) && n.folder === folder && n.title === note.title && n.format === note.format,
+    );
+    if (clash) {
+      $('project-status').textContent = w.noteClash.replace('{name}', `${note.title}.${note.format}`);
+      return false;
+    }
+  }
+  for (const note of notes) {
+    note.projectId = project || null;
+    note.folder = folder;
+    note.modifiedAt = nowISO();
+    state.sync?.markDirty(note);
+    await repo.saveNote(note);
+  }
+  if (state.note && ids.has(state.note.id)) {
+    // 연 메모를 옮겼으면 강조 폴더도 그 메모의 새 위치로
+    if (project !== state.project) await switchProject(project);
+    state.selectedFolder = state.note.folder;
+    $('folder-path').textContent = '/' + state.selectedFolder;
+    renderEditor();
+  }
+  displayTree();
+  return true;
+}
+
+/** 폴더 이동: targetParent 아래로 (다른 프로젝트 가능) */
+async function moveFolder(folder: string, project: string, targetParent: string): Promise<void> {
+  const w = WORDS[state.locale];
+  const sameProject = project === state.project;
+  const problem = folderMoveProblem(folder, targetParent, foldersOf(state.project), SETTINGS.maxFolderDepth, sameProject);
+  if (problem === 'same') return;
+  if (problem) {
+    $('project-status').textContent = problem === 'into_self' ? w.folderIntoSelf : w.folderTooDeep;
+    return;
+  }
+  await relocateFolder(folder, project, joinPath(targetParent, lastSegment(folder)));
+}
+
+/** folder(지금 프로젝트)를 project의 target 경로로: 아래 메모·빈 폴더 기록까지 */
+async function relocateFolder(folder: string, project: string, target: string): Promise<void> {
+  const w = WORDS[state.locale];
+  const from = state.project;
+  if (foldersOf(project).includes(target) && !(project === from && target === folder)) {
+    $('project-status').textContent = w.folderExists;
+    return;
+  }
+  if (depthOf(target) > SETTINGS.maxFolderDepth) {
+    $('project-status').textContent = w.folderTooDeep;
+    return;
+  }
+  const notes = notesIn(from, folder);
+  const ids = new Set(notes.map((n) => n.id));
+  for (const note of notes) {
+    const next = remap(note.folder, folder, target)!;
+    const clash = visibleNotes().find(
+      (n) => !ids.has(n.id) && inProject(n, project) && n.folder === next && n.title === note.title && n.format === note.format,
+    );
+    if (clash) {
+      $('project-status').textContent = w.noteClash.replace('{name}', `${note.title}.${note.format}`);
+      return;
+    }
+  }
+  // 새 폴더 기록 먼저 (빈 하위 폴더 유지)
+  const subfolders = foldersOf(from).filter((p) => isWithin(p, folder));
+  for (const path of subfolders) {
+    const key = folderKey(project, remap(path, folder, target)!);
+    if (!state.folders.some((f) => f.path === key)) {
+      await repo.saveFolder(key);
+      state.folders.push({ path: key });
+    }
+  }
+  for (const note of notes) {
+    note.folder = remap(note.folder, folder, target)!;
+    note.projectId = project || null;
+    note.modifiedAt = nowISO();
+    state.sync?.markDirty(note);
+    await repo.saveNote(note);
+  }
+  await forgetFolders(from, folder);
+  if (isWithin(state.selectedFolder, folder) && project === from)
+    state.selectedFolder = remap(state.selectedFolder, folder, target)!;
+  if (project !== from) await switchProject(project);
+  if (state.note && ids.has(state.note.id)) state.selectedFolder = state.note.folder;
+  $('folder-path').textContent = '/' + state.selectedFolder;
+  displayTree();
+  if (state.note && ids.has(state.note.id)) renderEditor();
 }
 
 async function addNote(title: string, content = '', format: NoteFormat = 'md'): Promise<void> {

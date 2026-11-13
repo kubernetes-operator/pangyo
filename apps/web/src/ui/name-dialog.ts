@@ -131,3 +131,83 @@ export function askConfirm(opts: { message: string; ok: string; cancel: string; 
     cancel.focus(); // 실수로 Enter를 눌러도 지우지 않게
   });
 }
+
+export interface MoveTarget {
+  project: string;
+  folder: string;
+}
+
+/** 이동 대상 고르기 (프로젝트 + 그 프로젝트의 폴더). 폴더 목록은 프로젝트를 바꿀 때마다 다시 계산 */
+export function askMove(opts: {
+  title: string;
+  projectLabel: string;
+  folderLabel: string;
+  projects: Array<{ id: string; label: string }>;
+  folders: (project: string) => Array<{ path: string; label: string; disabled?: boolean }>;
+  initial: MoveTarget;
+  ok: string;
+  cancel: string;
+}): Promise<MoveTarget | null> {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'name-dialog';
+  dialog.id = 'move-dialog';
+  const form = document.createElement('form');
+  const heading = document.createElement('p');
+  heading.textContent = opts.title;
+  const label = (text: string, control: HTMLElement) => {
+    const l = document.createElement('label');
+    l.append(text, control);
+    return l;
+  };
+  const project = document.createElement('select');
+  project.id = 'move-project';
+  for (const p of opts.projects) project.append(new Option(p.label, p.id, false, p.id === opts.initial.project));
+  const folder = document.createElement('select');
+  folder.id = 'move-folder';
+  const fillFolders = (preferred: string) => {
+    folder.replaceChildren(
+      ...opts.folders(project.value).map((f) => {
+        const o = new Option(f.label, f.path, false, f.path === preferred);
+        o.disabled = !!f.disabled;
+        return o;
+      }),
+    );
+    if (folder.selectedOptions[0]?.disabled) {
+      const first = [...folder.options].find((o) => !o.disabled);
+      if (first) first.selected = true;
+    }
+  };
+  fillFolders(opts.initial.folder);
+  project.addEventListener('change', () => fillFolders(''));
+  const ok = document.createElement('button');
+  ok.type = 'submit';
+  ok.className = 'primary';
+  ok.id = 'move-ok';
+  ok.textContent = opts.ok;
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.id = 'move-cancel';
+  cancel.textContent = opts.cancel;
+  const bar = document.createElement('div');
+  bar.className = 'toolbar';
+  bar.append(cancel, ok);
+  form.append(heading, label(opts.projectLabel, project), label(opts.folderLabel, folder), bar);
+  dialog.append(form);
+  document.body.append(dialog);
+  return new Promise((resolve) => {
+    let result: MoveTarget | null = null;
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(result);
+    });
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!folder.value && folder.selectedOptions[0]?.disabled) return;
+      result = { project: project.value, folder: folder.value };
+      dialog.close();
+    });
+    dialog.showModal();
+    folder.focus();
+  });
+}

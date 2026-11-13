@@ -475,3 +475,22 @@ fn outside_at_folder_becomes_a_project_and_keeps_note_ids_on_rename() {
     assert_eq!(moved.id, today.id);
     assert_ne!(moved.project_id, Some(project));
 }
+
+#[test]
+fn delete_folder_only_removes_empty_folders() {
+    let f = fixture();
+    let mut ws = f.open();
+    ws.set_meta("projects", &projects(&[(P_WORK, "업무")]))
+        .unwrap();
+    ws.create_folder("빈/안쪽").unwrap();
+    ws.create_folder(&format!("{P_WORK}::자료")).unwrap();
+    ws.save_note(&note(ID_A, "메모있음", "남음", "내용"))
+        .unwrap();
+    ws.delete_folder("빈").unwrap(); // 빈 하위 폴더째
+    assert!(!f.notes.join("빈").exists());
+    ws.delete_folder(&format!("{P_WORK}::자료")).unwrap();
+    assert!(!f.notes.join("@업무/자료").exists());
+    ws.delete_folder("메모있음").unwrap(); // 메모가 있으면 그대로
+    assert!(f.notes.join("메모있음/남음.md").is_file());
+    assert!(ws.delete_folder("../밖").is_err());
+}

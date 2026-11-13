@@ -351,9 +351,13 @@ export class SyncEngine {
    */
   private async pushProjects(store: ProjectStore, phase: 'upsert' | 'delete'): Promise<void> {
     if (!this.api.putProject || !this.api.deleteProject) return;
+    // 안의 메모가 아직 삭제 대기 중인 프로젝트는 다음에 (그 메모가 다 지워져야 서버가 지우기를 받아 줌)
+    const waiting = new Set(this.store.list().filter((n) => n.sync?.deleting && n.projectId).map((n) => n.projectId));
     const targets = store
       .list()
-      .filter((p) => (phase === 'delete' ? p.sync.deleting : p.sync.dirty && !p.sync.deleting));
+      .filter((p) =>
+        phase === 'delete' ? p.sync.deleting && !waiting.has(p.id) : p.sync.dirty && !p.sync.deleting,
+      );
     for (const project of targets) {
       try {
         if (project.sync.deleting) {
