@@ -125,3 +125,30 @@ test('연관 메모: 비슷한 메모를 서버에서 찾아 보여주고 누르
   await page.locator('#related-list button', { hasText: '프로젝트 계획 2차' }).click();
   await expect(page.locator('#title')).toHaveValue('프로젝트 계획 2차');
 });
+
+test('프로젝트(ADR-0005): 한 기기에서 만든 프로젝트와 그 메모가 다른 기기에 같은 프로젝트로', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const email = `proj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+  const a = await deviceFor(browser, email, true);
+  await a.locator('#add-project').click();
+  await a.locator('#name-input').fill('여행');
+  await a.locator('#name-input').press('Enter');
+  await createNote(a, '일정', '제주 3일');
+  await synced(a);
+
+  const b = await deviceFor(browser, email, false);
+  await expect(b.locator('#project-select option')).toHaveText(['기본', '여행'], { timeout: 15_000 });
+  await expect(b.locator('#tree')).not.toContainText('일정');
+  await b.locator('#project-select').selectOption({ label: '여행' });
+  await openNote(b, '일정');
+  await expect(b.locator('#editor')).toHaveValue('제주 3일');
+
+  // A에서 이름을 바꾸면 B에도
+  await a.locator('#rename-project').click();
+  await a.locator('#name-input').fill('제주 여행');
+  await a.locator('#name-input').press('Enter');
+  await synced(a);
+  await b.reload();
+  await expect(b.locator('#project-select option')).toHaveText(['기본', '제주 여행'], { timeout: 30_000 });
+});
+

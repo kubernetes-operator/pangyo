@@ -171,4 +171,9 @@ describe('normalizeNote (v0.1 데이터 호환)', () => {
   it('알 수 없는 format은 md로', () => {
     expect(normalizeNote({ id: 'x', format: 'docx' as never }).format).toBe('md');
   });
+  it('프로젝트(ADR-0005): projectId는 유지, 없거나 null이면 필드 없음(기본 프로젝트)', () => {
+    expect(normalizeNote({ id: 'x', projectId: 'p1' }).projectId).toBe('p1');
+    expect('projectId' in normalizeNote({ id: 'x' })).toBe(false);
+    expect('projectId' in normalizeNote({ id: 'x', projectId: null })).toBe(false);
+  });
 });

@@ -5,6 +5,7 @@
 // - 오프라인: 임대 없이 로컬 '초안'(dirty)으로만 저장 → 다시 연결되면 올리기 시도
 // 화면(DOM)과 저장소에 직접 의존하지 않아 단위 테스트로 검증합니다 (engine.test.ts).
 import type { Note, NoteFormat, NoteSync, ServerCopy } from '../domain/types';
+import type { LocalProject } from '../domain/projects';
 
 // === 0. 동기화 정책 변수 ===
 export const SYNC_SETTINGS = Object.freeze({
@@ -25,6 +26,18 @@ export interface ServerNote {
   modifiedAt: string;
   deleted: boolean;
   changeSeq: number;
+  /** 프로젝트 (null = 기본, ADR-0005). 예전 서버에는 없음 */
+  projectId?: string | null;
+}
+
+/** 서버의 프로젝트 (ADR-0005) */
+export interface ServerProject {
+  id: string;
+  name: string;
+  createdAt: string;
+  modifiedAt: string;
+  deleted: boolean;
+  changeSeq: number;
 }
 
 export interface LeaseGrant {
@@ -35,7 +48,13 @@ export interface LeaseGrant {
 
 /** 서버 API (sync/api.ts가 실제 구현, 테스트는 가짜 구현) */
 export interface SyncApi {
-  changes(since: number): Promise<{ notes: ServerNote[]; cursor: number; hasMore: boolean }>;
+  /** projects=true: 프로젝트를 아는 클라이언트 (프로젝트 변경과 다른 프로젝트 메모도 받음) */
+  changes(
+    since: number,
+    projects?: boolean,
+  ): Promise<{ notes: ServerNote[]; projects?: ServerProject[]; cursor: number; hasMore: boolean }>;
+  putProject?(id: string, name: string): Promise<ServerProject>;
+  deleteProject?(id: string): Promise<ServerProject>;
   get(id: string): Promise<ServerNote>;
   put(id: string, body: Record<string, unknown>): Promise<ServerNote>;
   acquireLease(id: string, clientId: string, label: string): Promise<LeaseGrant>;
@@ -61,6 +80,17 @@ export interface SyncStore {
   setMeta(key: string, value: unknown): Promise<void>;
   /** 이 메모들이 바뀌었으니 다시 그리기 */
   changed(ids: string[]): void;
+  /** 프로젝트를 쓰는 화면만 (웹). 없으면 예전 방식(기본 프로젝트만) */
+  projects?: ProjectStore;
+}
+
+/** 프로젝트 목록 저장 (app.ts가 구현) */
+export interface ProjectStore {
+  list(): LocalProject[];
+  save(project: LocalProject): Promise<void>;
+  remove(id: string): Promise<void>;
+  /** 목록이 바뀌었으니 다시 그리기 */
+  changed(): void;
 }
 
 /** 서버 오류 분류 (sync/api.ts가 ApiError/ServerUnavailable을 이 모양으로 전달) */
@@ -191,7 +221,10 @@ export class SyncEngine {
 
   async pull(): Promise<void> {
     for (;;) {
-      const page = await this.api.changes(this.cursor);
+      const projects = this.store.projects;
+      const page = await this.api.changes(this.cursor, !!projects);
+      // 프로젝트를 먼저: 메모가 가리키는 프로젝트가 화면에 있게
+      if (projects) for (const p of page.projects ?? []) await this.applyProject(projects, p);
       for (const server of page.notes) await this.apply(server);
       this.cursor = page.cursor;
       await this.store.setMeta(SYNC_SETTINGS.cursorMetaKey, this.cursor);
@@ -215,6 +248,7 @@ export class SyncEngine {
         undo: [],
         redo: [],
         sync: { version: server.version, dirty: false },
+        ...(this.store.projects ? { projectId: server.projectId ?? null } : {}),
       });
       this.store.changed([server.id]);
       return;
@@ -242,15 +276,84 @@ export class SyncEngine {
       format: server.format,
       content: server.content,
       modifiedAt: server.modifiedAt,
+      ...(this.store.projects ? { projectId: server.projectId ?? null } : {}),
     });
     local.sync = { version: server.version, dirty: false };
     await this.store.save(local);
     this.store.changed([local.id]);
   }
 
+  /** 서버의 프로젝트 변경을 반영 (ADR-0005) */
+  private async applyProject(store: ProjectStore, server: ServerProject): Promise<void> {
+    const local = store.list().find((p) => p.id === server.id);
+    if (server.deleted) {
+      if (!local) return;
+      await store.remove(server.id);
+      // 서버는 빈 프로젝트만 지우므로 남은 메모는 이 기기에서 오프라인으로 만든 것 → 기본으로 옮겨 잃지 않음
+      const orphans = this.store.list().filter((n) => n.projectId === server.id);
+      for (const note of orphans) {
+        note.projectId = null;
+        this.markDirty(note);
+        await this.store.save(note);
+      }
+      store.changed();
+      if (orphans.length) this.store.changed(orphans.map((n) => n.id));
+      return;
+    }
+    if (local?.sync.dirty || local?.sync.deleting) return; // 내 변경(이름 바꾸기·지우기)을 올릴 때까지 유지
+    await store.save({
+      id: server.id,
+      name: server.name,
+      createdAt: server.createdAt,
+      modifiedAt: server.modifiedAt,
+      sync: { synced: true, dirty: false },
+    });
+    store.changed();
+  }
+
+  /**
+   * 프로젝트 변경을 서버에. 순서: 만들기·이름 바꾸기(메모보다 먼저 — 메모가 새 프로젝트를 가리킬 수 있음)
+   * → 메모 → 지우기(메모를 다른 프로젝트로 옮긴 뒤여야 빈 프로젝트)
+   */
+  private async pushProjects(store: ProjectStore, phase: 'upsert' | 'delete'): Promise<void> {
+    if (!this.api.putProject || !this.api.deleteProject) return;
+    const targets = store
+      .list()
+      .filter((p) => (phase === 'delete' ? p.sync.deleting : p.sync.dirty && !p.sync.deleting));
+    for (const project of targets) {
+      try {
+        if (project.sync.deleting) {
+          if (project.sync.synced) await this.api.deleteProject(project.id);
+          await store.remove(project.id);
+        } else {
+          await this.api.putProject(project.id, project.name);
+          project.sync = { synced: true, dirty: false };
+          await store.save(project);
+        }
+      } catch (e) {
+        const err = asSyncError(e);
+        if (err.offline) throw e;
+        if (err.code === 'project_not_found' && project.sync.deleting) {
+          await store.remove(project.id); // 이미 지워짐
+        } else if (err.code === 'project_not_empty') {
+          // 다른 기기가 메모를 넣음 → 지우지 않고 되살림 (그 메모는 다음 가져오기에 옴)
+          project.sync = { ...project.sync, deleting: false, error: err.message };
+          await store.save(project);
+        } else {
+          project.sync = { ...project.sync, error: err.message };
+          await store.save(project);
+        }
+      }
+      store.changed();
+    }
+  }
+
   async push(): Promise<void> {
+    const projects = this.store.projects;
+    if (projects) await this.pushProjects(projects, 'upsert');
     const targets = this.store.list().filter((n) => n.sync?.dirty && !n.sync.conflict && !n.sync.error);
     for (const note of targets) await this.pushNote(note);
+    if (projects) await this.pushProjects(projects, 'delete');
   }
 
   private async pushNote(note: Note): Promise<void> {
@@ -274,6 +377,8 @@ export class SyncEngine {
         content: note.content,
         createdAt: note.createdAt,
         modifiedAt: note.modifiedAt,
+        // 프로젝트를 모르는 화면(데스크톱 3단계 전)은 보내지 않음 → 서버가 지금 프로젝트 유지
+        ...(this.store.projects ? { projectId: note.projectId ?? null } : {}),
       });
       // 올리는 동안 또 편집했으면 계속 dirty
       note.sync = { version: saved.version, dirty: snapshotOf(note) !== sent };

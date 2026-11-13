@@ -68,3 +68,11 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 .admin-account{gap:8px;flex-wrap:wrap}
 .admin-actions{display:flex;gap:4px;align-items:center}
 .admin-actions input{width:7em;border:1px solid var(--hairline);border-radius:3px;padding:4px}
+/* 프로젝트 (ADR-0005) */
+.project-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;border:1px solid var(--ink);border-radius:4px;padding:8px}
+.project-row[hidden]{display:none}
+.project-label{display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:600;flex:1 1 140px}
+.project-label select{font-weight:600;min-width:0}
+.project-row button{font-size:12px}
+#project-status{flex-basis:100%;margin:0;color:#a00}
+#project-status:empty{display:none}

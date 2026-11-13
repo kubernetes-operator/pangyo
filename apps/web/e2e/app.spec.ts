@@ -113,6 +113,79 @@ test('사용 의견(2026-11-13): 이름 창 Enter 확인·취소, 제목 Enter �
   await expect(page.locator('#wifi')).toHaveText('네트워크: 온라인');
 });
 
+test('프로젝트(ADR-0005): 만들기·전환하면 폴더와 메모가 따로, 메모 옮기기, 이름 바꾸기, 빈 프로젝트만 삭제', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#project-select')).toHaveValue('');
+  await expect(page.locator('#project-select option:checked')).toHaveText('기본');
+  await expect(page.locator('#delete-project')).toBeDisabled();
+  await createNote(page, '기본 메모');
+
+  // 새 프로젝트 → 그 프로젝트로 전환, 트리는 비어 있음
+  await page.locator('#add-project').click();
+  await page.locator('#name-input').fill('@개인');
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#name-error')).toContainText('@로 시작할 수 없습니다');
+  await page.locator('#name-input').fill('업무');
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#project-select option:checked')).toHaveText('업무');
+  await expect(page.locator('#tree')).not.toContainText('기본 메모');
+  await expect(page.locator('#count')).toHaveText('0 notes');
+
+  // 프로젝트 안의 폴더 2단계 + 메모 (기본 프로젝트와 같은 이름도 허용)
+  await enterName(page, '#add-folder', '회의/2024');
+  await page.locator('#tree button', { hasText: '▸ /' }).click();
+  await createNote(page, '기본 메모');
+  await expect(page.locator('#tree')).toContainText('▸ 2024');
+  await expect(page.locator('#count')).toHaveText('1 notes');
+
+  // 같은 이름 프로젝트는 거절
+  await page.locator('#add-project').click();
+  await page.locator('#name-input').fill('업무');
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#name-error')).toContainText('같은 이름');
+  await page.locator('#name-cancel').click();
+
+  // 기본으로 돌아가면 그 폴더는 보이지 않음
+  await page.locator('#project-select').selectOption({ label: '기본' });
+  await expect(page.locator('#tree')).not.toContainText('2024');
+  await expect(page.locator('#count')).toHaveText('1 notes');
+
+  // 메모를 기본 → 업무로 옮기면 같은 경로 메모가 있어 거절
+  await page.locator('#tree button', { hasText: '기본 메모' }).click();
+  await page.locator('#note-project').selectOption({ label: '프로젝트 이동: 업무' });
+  await expect(page.locator('#project-status')).toContainText('같은 이름의 메모');
+
+  // 이름 바꾸기
+  await page.locator('#project-select').selectOption({ label: '업무' });
+  await page.locator('#rename-project').click();
+  await expect(page.locator('#name-input')).toHaveValue('업무');
+  await page.locator('#name-input').fill('회사');
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#project-select option:checked')).toHaveText('회사');
+
+  // 메모가 있으면 지울 수 없음 → 메모를 기본이 아닌 새 프로젝트로 옮긴 뒤 지울 수 있음
+  await page.locator('#delete-project').click();
+  await expect(page.locator('#project-status')).toContainText('메모가 1개 있어');
+  await page.locator('#add-project').click();
+  await page.locator('#name-input').fill('보관');
+  await page.locator('#name-input').press('Enter');
+  await page.locator('#project-select').selectOption({ label: '회사' });
+  await page.locator('#tree button', { hasText: '기본 메모' }).click();
+  await page.locator('#note-project').selectOption({ label: '프로젝트 이동: 보관' });
+  await expect(page.locator('#project-select option:checked')).toHaveText('보관');
+  await expect(page.locator('#tree')).toContainText('기본 메모');
+  await page.locator('#project-select').selectOption({ label: '회사' });
+  await page.locator('#delete-project').click();
+  await expect(page.locator('#project-select option:checked')).toHaveText('기본');
+  await expect(page.locator('#project-select option')).toHaveText(['기본', '보관']);
+
+  // 새로고침해도 프로젝트·현재 프로젝트 유지
+  await page.locator('#project-select').selectOption({ label: '보관' });
+  await page.reload();
+  await expect(page.locator('#project-select option:checked')).toHaveText('보관');
+  await expect(page.locator('#tree')).toContainText('기본 메모');
+});
+
 test('T-03 MD/TXT 다운로드 내용이 UTF-8로 동일', async ({ page }) => {
   await page.goto('/');
   await createNote(page, '내보내기');

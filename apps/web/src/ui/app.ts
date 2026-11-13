@@ -11,6 +11,17 @@ import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
 import { askName } from './name-dialog';
+import {
+  CURRENT_PROJECT_META_KEY,
+  DEFAULT_PROJECT,
+  PROJECTS_META_KEY,
+  folderKey,
+  inProject,
+  normalizeProjectName,
+  parseFolderKey,
+  projectOf,
+  type LocalProject,
+} from '../domain/projects';
 import { remember, restore, type HistoryKind } from '../domain/history';
 import {
   indentLines,
@@ -54,7 +65,12 @@ const state = {
   syncTick: null as Promise<void> | null,
   /** 본문·제목·형식·Undo를 바꿨지만 아직 저장하지 않은 메모 (아니면 세션 기록만 저장) */
   unsaved: new Set<string>(),
+  // 프로젝트 (ADR-0005). 데스크톱·모바일 앱은 파일 배치(3단계) 전까지 기본 프로젝트만
+  projects: [] as LocalProject[],
+  project: DEFAULT_PROJECT,
 };
+/** 프로젝트 화면 사용 여부 (웹만, 데스크톱은 ADR-0005 3단계에서) */
+const projectsEnabled = () => !isTauri();
 
 // 데스크톱·모바일 앱의 장비 연결 상태 (ADR-0004). 웹에서는 쓰지 않음
 const device = {
@@ -89,6 +105,7 @@ function setLanguage(locale: Locale): void {
   $<HTMLInputElement>('title').placeholder = PLACEHOLDERS[locale].title;
   if (repo) renderSyncInfo();
   updateConnectivity();
+  if (repo) renderProjects();
   editor().placeholder = PLACEHOLDERS[locale].editor;
   repo.setMeta('locale', locale).catch(console.error);
 }
@@ -144,11 +161,14 @@ function displayTree(): void {
   tree.replaceChildren();
   const query = $<HTMLInputElement>('search').value.toLocaleLowerCase();
   const rows = state.notes.filter(
-    (n) => !query || `${n.title} ${n.content}`.toLocaleLowerCase().includes(query),
+    (n) =>
+      inProject(n, state.project) && (!query || `${n.title} ${n.content}`.toLocaleLowerCase().includes(query)),
   );
-  const folderPaths = [
-    ...new Set([...state.folders.map((x) => x.path), ...rows.flatMap((n) => folderAncestors(n.folder))]),
-  ].sort();
+  const projectFolders = state.folders
+    .map((x) => parseFolderKey(x.path))
+    .filter((f) => f.project === state.project)
+    .map((f) => f.path);
+  const folderPaths = [...new Set([...projectFolders, ...rows.flatMap((n) => folderAncestors(n.folder))])].sort();
   const makeButton = (
     title: string,
     cls: string,
@@ -221,6 +241,7 @@ function renderEditor(): void {
   }
   $<HTMLInputElement>('title').value = note.title;
   editor().value = note.content;
+  renderNoteProject();
   $<HTMLSelectElement>('format').value = note.format;
   $('format-label').textContent = '.' + note.format;
   $('created-at').textContent = new Date(note.createdAt).toLocaleString();
@@ -312,6 +333,28 @@ function syncStore(): SyncStore {
     },
     getMeta: (key) => repo.getMeta(key),
     setMeta: (key, value) => repo.setMeta(key, value),
+    ...(projectsEnabled()
+      ? {
+          projects: {
+            list: () => state.projects,
+            save: async (project: LocalProject) => {
+              const at = state.projects.findIndex((p) => p.id === project.id);
+              if (at < 0) state.projects.push(project);
+              else state.projects[at] = project;
+              await saveProjects();
+            },
+            remove: async (id: string) => {
+              state.projects = state.projects.filter((p) => p.id !== id);
+              await saveProjects();
+              if (state.project === id) await switchProject(DEFAULT_PROJECT);
+            },
+            changed: () => {
+              renderProjects();
+              displayTree();
+            },
+          },
+        }
+      : {}),
     changed: (ids) => {
       displayTree();
       const selected = state.note;
@@ -692,6 +735,12 @@ async function selectNote(id: string): Promise<void> {
   await flushSave();
   state.selectedId = id;
   state.note = state.notes.find((n) => n.id === id) ?? null;
+  // 다른 프로젝트의 메모(연관 메모 등)를 열면 그 프로젝트로 이동
+  if (state.note && projectsEnabled() && projectOf(state.note) !== state.project) {
+    state.project = projectOf(state.note);
+    void repo.setMeta(CURRENT_PROJECT_META_KEY, state.project);
+    renderProjects();
+  }
   // 강조는 지금 연 메모와 그 메모가 있는 폴더만 (2026-11-13 사용 의견)
   if (state.note) {
     state.selectedFolder = state.note.folder;
@@ -704,10 +753,161 @@ async function selectNote(id: string): Promise<void> {
   if (isSmallScreen()) changeMode('editor');
 }
 
+// === 프로젝트 (ADR-0005) ===
+const liveProjects = () => state.projects.filter((p) => !p.sync.deleting);
+const projectName = (id: string) =>
+  id ? (state.projects.find((p) => p.id === id)?.name ?? '?') : WORDS[state.locale].defaultProject;
+
+async function saveProjects(): Promise<void> {
+  await repo.setMeta(PROJECTS_META_KEY, state.projects);
+}
+
+function projectOptions(select: HTMLSelectElement, current: string): void {
+  const options = [DEFAULT_PROJECT, ...liveProjects().sort((a, b) => a.name.localeCompare(b.name)).map((p) => p.id)];
+  select.replaceChildren(
+    ...options.map((id) => {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = projectName(id);
+      o.selected = id === current;
+      return o;
+    }),
+  );
+}
+
+function renderProjects(): void {
+  if (!projectsEnabled()) return;
+  projectOptions($<HTMLSelectElement>('project-select'), state.project);
+  const isDefault = state.project === DEFAULT_PROJECT;
+  $<HTMLButtonElement>('rename-project').disabled = isDefault;
+  $<HTMLButtonElement>('delete-project').disabled = isDefault;
+  const error = state.projects.find((p) => p.id === state.project)?.sync.error;
+  $('project-status').textContent = error ?? '';
+  renderNoteProject();
+}
+
+function renderNoteProject(): void {
+  if (!projectsEnabled()) return;
+  const select = $<HTMLSelectElement>('note-project');
+  const note = state.note;
+  select.disabled = !note || state.lease?.kind === 'denied';
+  if (!note) return select.replaceChildren();
+  projectOptions(select, projectOf(note));
+  for (const o of select.options) o.textContent = WORDS[state.locale].moveTo + o.textContent;
+}
+
+async function switchProject(id: string): Promise<void> {
+  if (id === state.project) return;
+  state.project = id;
+  state.selectedFolder = '';
+  $('folder-path').textContent = '/';
+  await repo.setMeta(CURRENT_PROJECT_META_KEY, id);
+  renderProjects();
+  displayTree();
+  // 지금 연 메모가 다른 프로젝트면 그 프로젝트의 최근 메모로 (없으면 빈 화면)
+  if (state.note && !inProject(state.note, id)) {
+    const next = state.notes
+      .filter((n) => inProject(n, id))
+      .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))[0];
+    if (next) await selectNote(next.id);
+    else {
+      releaseEdit();
+      endSession();
+      await flushSave();
+      state.selectedId = null;
+      state.note = null;
+      state.lease = null;
+      renderEditor();
+      displayTree();
+    }
+  }
+}
+
+function markProjectDirty(project: LocalProject): void {
+  project.sync = { ...project.sync, dirty: true, error: null };
+  project.modifiedAt = nowISO();
+}
+
+async function addProject(name: string): Promise<void> {
+  const time = nowISO();
+  const project: LocalProject = { id: uid(), name, createdAt: time, modifiedAt: time, sync: { synced: false, dirty: true } };
+  state.projects.push(project);
+  await saveProjects();
+  await switchProject(project.id);
+  void state.sync?.syncOnce();
+}
+
+async function renameProject(id: string, name: string): Promise<void> {
+  const project = state.projects.find((p) => p.id === id);
+  if (!project) return;
+  project.name = name;
+  markProjectDirty(project);
+  await saveProjects();
+  renderProjects();
+  void state.sync?.syncOnce();
+}
+
+/** 빈 프로젝트만 지움. 서버에 있으면 지우기 요청을 올리고, 다른 기기가 메모를 넣었으면 서버가 거절 → 되살림 */
+async function deleteProject(id: string): Promise<void> {
+  const project = state.projects.find((p) => p.id === id);
+  if (!project) return;
+  const count = state.notes.filter((n) => inProject(n, id)).length;
+  if (count) {
+    $('project-status').textContent = WORDS[state.locale].projectNotEmpty.replace('{n}', String(count));
+    return;
+  }
+  // 이 프로젝트의 빈 폴더 기록도 지움 (folders 저장소는 지우기 API가 없어 목록에서만 제외 → 같은 ID가 다시 쓰이지 않음)
+  state.folders = state.folders.filter((f) => parseFolderKey(f.path).project !== id);
+  if (project.sync.synced) project.sync = { ...project.sync, deleting: true };
+  else state.projects = state.projects.filter((p) => p.id !== id);
+  await saveProjects();
+  await switchProject(DEFAULT_PROJECT);
+  renderProjects();
+  void state.sync?.syncOnce();
+}
+
+/** 메모를 다른 프로젝트로 (폴더 경로는 그대로) */
+async function moveNoteToProject(target: string): Promise<void> {
+  const note = state.note;
+  if (!note || projectOf(note) === target) return;
+  const clash = state.notes.some(
+    (n) =>
+      n.id !== note.id &&
+      inProject(n, target) &&
+      n.folder === note.folder &&
+      n.title === note.title &&
+      n.format === note.format,
+  );
+  if (clash) {
+    $('project-status').textContent = WORDS[state.locale].moveConflict;
+    renderNoteProject();
+    return;
+  }
+  note.projectId = target || null;
+  note.modifiedAt = nowISO();
+  state.sync?.markDirty(note);
+  await repo.saveNote(note);
+  state.project = target;
+  await repo.setMeta(CURRENT_PROJECT_META_KEY, target);
+  state.selectedFolder = note.folder;
+  renderProjects();
+  displayTree();
+}
+
+const projectNameValidator = (selfId?: string) => (v: string) => {
+  try {
+    normalizeProjectName(v, state.projects, selfId);
+    return null;
+  } catch (e) {
+    return e instanceof FolderError ? e.message : String(e);
+  }
+};
+
 async function addNote(title: string, content = '', format: NoteFormat = 'md'): Promise<void> {
   const sanitized = safeFilename(title);
   const exists = state.notes.some(
-    (n) => n.folder === state.selectedFolder && n.title === sanitized && n.format === format,
+    (n) =>
+      inProject(n, state.project) && n.folder === state.selectedFolder && n.title === sanitized && n.format === format,
   );
   if (exists) {
     alert('같은 폴더에 같은 이름의 메모가 있습니다.');
@@ -725,6 +925,7 @@ async function addNote(title: string, content = '', format: NoteFormat = 'md'): 
     sessions: [],
     undo: [],
     redo: [],
+    ...(projectsEnabled() ? { projectId: state.project || null } : {}),
   };
   state.sync?.markDirty(note); // 로그인 중이면 새 메모도 올리기 대상
   await repo.saveNote(note);
@@ -736,9 +937,10 @@ async function addFolder(raw: string): Promise<void> {
   const path = parseFolder(raw, SETTINGS.maxFolderDepth);
   if (!path) return;
   for (const part of folderAncestors(path)) {
-    if (!state.folders.some((f) => f.path === part)) {
-      await repo.saveFolder(part);
-      state.folders.push({ path: part });
+    const key = folderKey(state.project, part);
+    if (!state.folders.some((f) => f.path === key)) {
+      await repo.saveFolder(key);
+      state.folders.push({ path: key });
     }
   }
   selectFolder(path);
@@ -816,6 +1018,33 @@ function bindEvents(): void {
     });
     if (value) await addFolder(value);
   };
+  $<HTMLSelectElement>('project-select').onchange = (e) =>
+    void switchProject((e.target as HTMLSelectElement).value);
+  $('add-project').onclick = async () => {
+    const value = await askName({
+      label: w().newProjectName,
+      hint: w().projectHint,
+      ok: w().ok,
+      cancel: w().cancel,
+      validate: projectNameValidator(),
+    });
+    if (value) await addProject(normalizeProjectName(value, state.projects));
+  };
+  $('rename-project').onclick = async () => {
+    const id = state.project;
+    if (!id) return;
+    const value = await askName({
+      label: w().renameProjectTo,
+      initial: projectName(id),
+      ok: w().rename,
+      cancel: w().cancel,
+      validate: projectNameValidator(id),
+    });
+    if (value) await renameProject(id, normalizeProjectName(value, state.projects, id));
+  };
+  $('delete-project').onclick = () => void deleteProject(state.project);
+  $<HTMLSelectElement>('note-project').onchange = (e) =>
+    void moveNoteToProject((e.target as HTMLSelectElement).value);
   // 제목에서 Enter → 본문으로 이동 (한글 조합 중 Enter는 제외)
   $<HTMLInputElement>('title').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing) return;
@@ -915,9 +1144,19 @@ export async function bootstrap(repository: NoteRepository): Promise<void> {
   const locale = await repo.getMeta<string>('locale');
   state.notes = await repo.listNotes();
   state.folders = await repo.listFolders();
+  if (projectsEnabled()) {
+    state.projects = (await repo.getMeta<LocalProject[]>(PROJECTS_META_KEY)) ?? [];
+    const current = (await repo.getMeta<string>(CURRENT_PROJECT_META_KEY)) ?? DEFAULT_PROJECT;
+    state.project = state.projects.some((p) => p.id === current && !p.sync.deleting) ? current : DEFAULT_PROJECT;
+    $('project-row').hidden = false;
+    $('note-project').hidden = false;
+  }
   setLanguage(locale === 'en' ? 'en' : 'ko');
+  renderProjects();
   const selected = await repo.getMeta<string>('selectedId');
-  const initial = state.notes.find((n) => n.id === selected) ?? state.notes[0];
+  const initial =
+    state.notes.find((n) => n.id === selected && inProject(n, state.project)) ??
+    state.notes.find((n) => inProject(n, state.project));
   if (initial) {
     state.selectedId = initial.id;
     state.note = initial;

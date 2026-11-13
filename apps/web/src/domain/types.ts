@@ -50,6 +50,8 @@ export interface Note extends Snapshot {
   undo: Snapshot[];
   redo: Snapshot[];
   sync?: NoteSync;
+  /** 프로젝트 ID (ADR-0005). 없거나 null = 기본 프로젝트. v0.1 레코드에는 없음 */
+  projectId?: string | null;
 }
 
 export interface FolderRecord {
@@ -86,5 +88,7 @@ export function normalizeNote(raw: Partial<Note> & { id: string }): Note {
     undo: Array.isArray(raw.undo) ? raw.undo : [],
     redo: Array.isArray(raw.redo) ? raw.redo : [],
     ...(raw.sync && typeof raw.sync.version === 'number' ? { sync: { ...raw.sync, dirty: !!raw.sync.dirty } } : {}),
+    // 프로젝트 (ADR-0005): 문자열만 유지, 그 밖(없음·null·잘못된 값)은 기본 프로젝트
+    ...(typeof raw.projectId === 'string' && raw.projectId ? { projectId: raw.projectId } : {}),
   };
 }
