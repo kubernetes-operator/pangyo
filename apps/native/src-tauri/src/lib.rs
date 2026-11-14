@@ -135,6 +135,8 @@ struct AppInfo {
     version: &'static str,
     build: Option<&'static str>,
     platform: &'static str,
+    /// Windows 설치 방식: "msi"(Program Files) 또는 "nsis"(사용자 폴더 .exe). 같은 방식의 설치 파일로 업데이트해야 함
+    install_kind: Option<&'static str>,
 }
 
 #[tauri::command]
@@ -143,7 +145,38 @@ fn app_info() -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: option_env!("MEMONEST_BUILD").filter(|b| !b.is_empty()),
         platform: std::env::consts::OS,
+        install_kind: cfg!(windows)
+            .then(|| {
+                std::env::current_exe()
+                    .ok()
+                    .map(|p| install_kind(&p.display().to_string()))
+            })
+            .flatten(),
     }
+}
+
+/// Windows 설치 위치로 설치 방식 판단 (2026-11-14 사용자 확인: msi로 설치한 앱을 .exe로 업데이트하면
+/// 다른 폴더에 따로 설치되고 예전 앱이 다시 열려 업데이트가 안 된 것처럼 보였음)
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn install_kind(exe: &str) -> &'static str {
+    if exe
+        .to_lowercase()
+        .replace('/', "\\")
+        .contains("\\appdata\\local\\")
+    {
+        "nsis"
+    } else {
+        "msi"
+    }
+}
+
+/// 지난 Windows 업데이트 결과 (설치 프로그램 종료 코드). 한 번 읽으면 지움. 기록이 없으면 None
+#[tauri::command]
+fn last_update_result() -> Option<String> {
+    let log = std::env::temp_dir().join("MemoNest-update.log");
+    let text = std::fs::read_to_string(&log).ok()?;
+    let _ = std::fs::remove_file(&log);
+    Some(text.trim().to_owned())
 }
 
 /// 서버가 발급한 일회용 다운로드 주소(`<연결한 서버>/dl/<토큰>`)만 OS 브라우저(Android: 다운로드 → 설치 화면)로 엶.
@@ -214,19 +247,34 @@ async fn install_update(
         if !actual.eq_ignore_ascii_case(sha256.trim()) {
             return Err("받은 설치 파일이 게시된 파일과 다릅니다 (sha256 불일치)".into());
         }
-        let installer = std::env::temp_dir().join("MemoNest-update-setup.exe");
-        std::fs::write(&installer, &data).map_err(|e| e.to_string())?;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        // 설치가 끝나면 다시 실행. 앱은 바로 닫아 설치 프로그램이 파일을 바꿀 수 있게.
-        // cmd는 Rust 기본 인자 따옴표(\")를 이해하지 못해 '\\'를 찾을 수 없다는 오류가 났음(2026-11-14 사용자 확인)
-        // → 명령줄을 그대로(raw_arg) 넘김
+        let exe = exe.display().to_string();
+        let kind = install_kind(&exe);
+        let temp = std::env::temp_dir();
+        let installer = temp.join(if kind == "msi" {
+            "MemoNest-update.msi"
+        } else {
+            "MemoNest-update-setup.exe"
+        });
+        std::fs::write(&installer, &data).map_err(|e| e.to_string())?;
+        let log = temp.join("MemoNest-update.log");
+        let _ = std::fs::remove_file(&log);
+        // 배치 파일로 실행: 한 줄 명령의 따옴표 문제(2026-11-14 '\\를 찾을 수 없음')를 피하고, 설치가 끝날 때까지 확실히 기다림
+        let script = temp.join("MemoNest-update.cmd");
+        std::fs::write(
+            &script,
+            update_script(
+                kind,
+                &installer.display().to_string(),
+                &exe,
+                &log.display().to_string(),
+            ),
+        )
+        .map_err(|e| e.to_string())?;
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         std::process::Command::new("cmd")
-            .raw_arg(update_command_line(
-                &installer.display().to_string(),
-                &exe.display().to_string(),
-            ))
+            .raw_arg(format!("/S /C \"\"{}\"\"", script.display()))
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
@@ -235,28 +283,60 @@ async fn install_update(
     }
 }
 
-/// Windows 업데이트 명령줄 (cmd 뒤에 그대로 붙임): 앱이 닫힐 때까지 2초 기다림 → 설치 프로그램을 조용히(/S) 실행하고
-/// 끝날 때까지 기다림 → 앱 다시 실행. `/S /C "..."`: cmd가 바깥 따옴표 한 쌍만 벗기고 안쪽 따옴표는 그대로 씀
+/// Windows 업데이트 배치 파일: 앱이 닫힐 때까지 2초 → 같은 방식으로 설치(msi: msiexec /passive — 관리자 확인 창,
+/// nsis: /S 조용히) → 종료 코드를 기록 → 앱 다시 실행. 배치에서는 GUI 설치 프로그램도 끝날 때까지 기다림
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-fn update_command_line(installer: &str, exe: &str) -> String {
+fn update_script(kind: &str, installer: &str, exe: &str, log: &str) -> String {
+    let install = if kind == "msi" {
+        format!("msiexec /i \"{installer}\" /passive /norestart")
+    } else {
+        format!("\"{installer}\" /S")
+    };
     format!(
-        "/S /C \"ping -n 3 127.0.0.1 >nul & start \"\" /wait \"{installer}\" /S & start \"\" \"{exe}\"\""
+        "@echo off\r\nchcp 65001 >nul\r\nping -n 3 127.0.0.1 >nul\r\n{install}\r\necho exit=%errorlevel% kind={kind}> \"{log}\"\r\nstart \"\" \"{exe}\"\r\n"
     )
 }
 
 #[cfg(test)]
 mod update_tests {
     #[test]
-    fn update_command_line_keeps_plain_quotes_for_cmd() {
-        let line = super::update_command_line(
-            r"C:\Users\me\AppData\Local\Temp\MemoNest-update-setup.exe",
-            r"C:\Program Files\MemoNest\memonest-native.exe",
+    fn install_kind_from_location() {
+        assert_eq!(
+            super::install_kind(r"C:\Users\me\AppData\Local\MemoNest\memonest-native.exe"),
+            "nsis"
         );
         assert_eq!(
-            line,
-            r#"/S /C "ping -n 3 127.0.0.1 >nul & start "" /wait "C:\Users\me\AppData\Local\Temp\MemoNest-update-setup.exe" /S & start "" "C:\Program Files\MemoNest\memonest-native.exe"""#
+            super::install_kind(r"C:\Program Files\MemoNest\memonest-native.exe"),
+            "msi"
         );
-        assert!(!line.contains("\\\""), "cmd가 이해하지 못하는 \\\" 없음");
+    }
+
+    #[test]
+    fn update_script_uses_matching_installer_and_logs_exit_code() {
+        let msi = super::update_script(
+            "msi",
+            r"C:\T\MemoNest-update.msi",
+            r"C:\Program Files\MemoNest\memonest-native.exe",
+            r"C:\T\MemoNest-update.log",
+        );
+        assert!(
+            msi.contains(r#"msiexec /i "C:\T\MemoNest-update.msi" /passive /norestart"#),
+            "{msi}"
+        );
+        assert!(msi.contains(r#"start "" "C:\Program Files\MemoNest\memonest-native.exe""#));
+        assert!(
+            msi.starts_with("@echo off\r\nchcp 65001"),
+            "한글 경로(사용자 이름)를 위해 UTF-8"
+        );
+        assert!(msi.contains(r#"echo exit=%errorlevel% kind=msi> "C:\T\MemoNest-update.log""#));
+        let nsis = super::update_script(
+            "nsis",
+            r"C:\T\setup.exe",
+            r"C:\Users\me\AppData\Local\MemoNest\m.exe",
+            r"C:\T\log",
+        );
+        assert!(nsis.contains("\r\n\"C:\\T\\setup.exe\" /S\r\n"), "{nsis}");
+        assert!(!nsis.contains("\\\""), "cmd가 이해하지 못하는 \\\" 없음");
     }
 }
 
@@ -432,6 +512,7 @@ pub fn run() {
             open_download,
             save_download,
             install_update,
+            last_update_result,
             device_pair,
             device_unpair,
             server_request

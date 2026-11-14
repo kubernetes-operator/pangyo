@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNewBuild, pickUpdate, buildLabel } from './app-update';
+import { isNewBuild, pickUpdate, buildLabel, updateExitCode, updateFileId } from './app-update';
 
 const files = [
   { id: 'android-apk', platform: 'Android', label: 'APK', fileName: 'a.apk', size: 1, sha256: 'x' },
@@ -19,5 +19,17 @@ describe('앱 안 업데이트 (A안)', () => {
     expect(pickUpdate(android, { build: 'aaaaaaa', files }).file).toBeNull();
     expect(pickUpdate({ ...android, platform: 'ios' }, { build: 'bbbbbbb', files }).file).toBeNull();
     expect(buildLabel(android)).toBe('0.1.0 (aaaaaaa)');
+  });
+  it('Windows는 설치 방식과 같은 파일로 (msi로 설치한 앱은 msi)', () => {
+    const win = { version: '0.1.0', build: 'a', platform: 'windows' };
+    expect(updateFileId({ ...win, installKind: 'msi' })).toBe('windows-msi');
+    expect(updateFileId({ ...win, installKind: 'nsis' })).toBe('windows-exe');
+    expect(updateFileId({ ...win, installKind: null })).toBe('windows-exe');
+    expect(buildLabel({ ...win, build: 'abcdef12', installKind: 'msi' })).toBe('0.1.0 (abcdef1) · .msi');
+  });
+  it('지난 업데이트 기록의 종료 코드', () => {
+    expect(updateExitCode('exit=0 kind=msi')).toBe(0);
+    expect(updateExitCode('exit=1603 kind=msi')).toBe(1603);
+    expect(updateExitCode(null)).toBeNull();
   });
 });
