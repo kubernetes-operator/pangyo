@@ -4,6 +4,12 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 const PASSWORD = 'correct horse battery';
 
 /** 새 브라우저 컨텍스트(= 다른 기기)에서 로그인한 페이지 */
+/** 본문 아래 '더보기' 열기 (형식·다운로드·이동·가져오기·삭제) */
+async function openMore(page: Page): Promise<void> {
+  const more = page.locator('#more-actions');
+  if (!(await more.evaluate((d: HTMLDetailsElement) => d.open))) await more.locator('summary').click();
+}
+
 async function deviceFor(browser: Browser, email: string, register: boolean): Promise<Page> {
   const context = await browser.newContext({ locale: 'ko-KR' });
   await context.addInitScript(() => localStorage.setItem('memonest.helpShown', '1')); // 도움말은 help.spec.ts
@@ -171,6 +177,7 @@ test('사용 의견(2026-11-13 2차): 기본 프로젝트 이름 바꾸기와 �
   await expect(b.locator('#tree')).toContainText('지울 메모');
 
   await openNote(a, '지울 메모');
+  await openMore(a);
   await a.locator('#delete-note').click();
   await a.locator('#confirm-ok').click();
   await expect(a.locator('#tree')).not.toContainText('지울 메모');
@@ -188,6 +195,7 @@ test('휴지통(서버 보관 7일): 지운 동기화 메모를 되살리면 다
   await expect(b.locator('#tree')).toContainText('되살릴 메모');
 
   await openNote(a, '되살릴 메모');
+  await openMore(a);
   await a.locator('#delete-note').click();
   await a.locator('#confirm-ok').click();
   await synced(a);

@@ -265,6 +265,12 @@ fn save_download(app: tauri::AppHandle, file_name: String, data: Vec<u8>) -> Com
 
 /// 장비 등록 화면의 기본 장비 이름에 쓸 호스트 이름 (2026-11-13 사용 의견: 내 기기 이름이 먼저 보이게).
 /// 알 수 없거나 의미 없는 값(localhost 등, Android에서 흔함)이면 None → 화면이 기기 모델/OS로 대신 채움
+/// 화면 위쪽 여백(상태바 높이, CSS px). Android에서 메뉴가 상태바와 겹치지 않게 (2026-11-14 사용 의견)
+#[tauri::command]
+fn top_inset() -> f64 {
+    platform::top_inset()
+}
+
 /// Android는 설정의 '기기 이름'(없으면 제조사·모델), 데스크톱은 호스트 이름 (2026-11-13 사용자 확인: Android에서 비어 있었음)
 #[tauri::command]
 fn device_hostname() -> Option<String> {
@@ -376,6 +382,7 @@ pub fn run() {
             forget_external_deletion,
             device_status,
             device_hostname,
+            top_inset,
             app_info,
             open_download,
             save_download,

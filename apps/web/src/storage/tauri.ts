@@ -28,6 +28,7 @@ export const COMMANDS = {
   openDownload: 'open_download',
   saveDownload: 'save_download',
   installUpdate: 'install_update',
+  topInset: 'top_inset',
   devicePair: 'device_pair',
   deviceUnpair: 'device_unpair',
   serverRequest: 'server_request',
@@ -76,6 +77,8 @@ export const appApi = {
   openDownload: (url: string) => invoke<void>(COMMANDS.openDownload, { url }),
   /** 내보낸 파일(프로젝트 .zip)을 OS 다운로드 폴더에 저장 → 저장한 경로 */
   saveDownload: (fileName: string, data: number[]) => invoke<string>(COMMANDS.saveDownload, { fileName, data }),
+  /** 화면 위쪽 여백 (Android 상태바 높이, CSS px) */
+  topInset: () => invoke<number>(COMMANDS.topInset).catch(() => 0),
   /** Windows: 받아서 검증 → 조용히 설치 → 다시 실행 (다른 OS는 'unsupported') */
   installUpdate: (url: string, sha256: string) => invoke<void>(COMMANDS.installUpdate, { url, sha256 }),
 };

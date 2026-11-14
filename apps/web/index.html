@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="Offline first minimal Markdown notes" />
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -34,7 +34,7 @@
           <button id="export-project" type="button" data-i18n="exportProject">전체 다운로드</button>
           <p class="tiny" id="project-status" role="status"></p>
         </div>
-        <div class="device-row"><span id="battery">배터리: --</span><span id="wifi">네트워크: --</span><span id="bluetooth">블루투스: --</span></div>
+        <div class="device-row"><span id="battery">배터리: --</span><span id="wifi">네트워크: --</span><span id="storage-use">용량: --</span></div>
         <details class="organizer-help" id="organizer-help"><summary data-i18n="helpSummary">표시 설명</summary>
           <p data-i18n="helpDepth">폴더 2단계까지: 폴더 안에 폴더를 한 번 더 만들 수 있습니다(예: 업무/회의). 한 폴더 안의 폴더 개수 제한은 없습니다.</p>
           <p data-i18n="helpDevice">배터리·네트워크·블루투스: 이 기기의 상태입니다. 브라우저가 알려 주지 않는 값은 --로 표시합니다.</p>
@@ -53,17 +53,19 @@
         <div id="sync-banner" class="sync-banner" role="status" hidden></div>
         <textarea id="editor" spellcheck="false" placeholder="여기에 생각을 작성하세요. Markdown을 그대로 입력합니다." aria-label="Note content"></textarea>
         <div class="doc-actions">
-          <button id="undo-btn" data-i18n="undo">Undo</button><button id="redo-btn" data-i18n="redo">Redo</button>
+          <button id="undo-btn" class="short-label" data-i18n="undo">Undo</button><button id="redo-btn" class="short-label" data-i18n="redo">Redo</button>
           <button id="indent-btn" title="Tab">→</button><button id="outdent-btn" title="Shift+Tab">←</button>
-          <select id="format" title="File format"><option value="md">Markdown (.md)</option><option value="txt">Plain Text (.txt)</option></select>
-          <button id="export-btn" data-i18n="export">다운로드</button>
-          <button id="delete-note" type="button" data-i18n="deleteNote">메모 삭제</button>
-          <!-- 자주 쓰지 않는 기능은 '더보기'에 (2026-11-13 사용 의견) -->
+          <!-- 긴 메모: 맨 위 / 마지막으로 쓴 위치 (2026-11-14 사용 의견) -->
+          <button id="jump-top" type="button">⤒</button><button id="jump-last" type="button">✎</button>
+          <!-- 자주 쓰지 않는 기능은 '더보기'에 (2026-11-13·14 사용 의견: 모바일에서 버튼이 3줄) -->
           <details class="more-actions" id="more-actions"><summary data-i18n="more">더보기 ⋯</summary>
             <div class="more-panel">
+              <select id="format" title="File format"><option value="md">Markdown (.md)</option><option value="txt">Plain Text (.txt)</option></select>
+              <button id="export-btn" data-i18n="export">다운로드</button>
               <select id="note-project" title="Move to project" hidden></select>
               <select id="note-folder" title="Move to folder"></select>
               <button id="import-btn" data-i18n="import">가져오기</button>
+              <button id="delete-note" type="button" class="danger-text" data-i18n="deleteNote">메모 삭제</button>
             </div>
           </details>
           <input id="import-file" type="file" accept=".md,.txt,text/plain,text/markdown" hidden />

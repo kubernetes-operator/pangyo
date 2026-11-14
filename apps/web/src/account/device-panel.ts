@@ -158,7 +158,17 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
 
   async function renderForm() {
     const status = message('', 'error');
-    const server = el('input', { type: 'url', id: 'device-server', required: true, placeholder: 'https://', autocomplete: 'off' });
+    // https:// 는 빼도 됨 (앱이 붙임) → 브라우저의 URL 형식 검사를 피하려고 text + url 키보드
+    const server = el('input', {
+      type: 'text',
+      id: 'device-server',
+      required: true,
+      placeholder: 'note.example.com',
+      autocomplete: 'off',
+      inputMode: 'url',
+      autocapitalize: 'off',
+    });
+    server.spellcheck = false;
     const code = el('input', {
       type: 'text',
       id: 'device-code',
