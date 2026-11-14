@@ -54,16 +54,16 @@
         <textarea id="editor" spellcheck="false" placeholder="여기에 생각을 작성하세요. Markdown을 그대로 입력합니다." aria-label="Note content"></textarea>
         <div class="doc-actions">
           <button id="undo-btn" class="short-label" data-i18n="undo">Undo</button><button id="redo-btn" class="short-label" data-i18n="redo">Redo</button>
-          <button id="indent-btn" title="Tab">→</button><button id="outdent-btn" title="Shift+Tab">←</button>
+          <button id="indent-btn" title="Tab">⇥</button><button id="outdent-btn" title="Shift+Tab">⇤</button>
           <!-- 긴 메모: 맨 위 / 마지막으로 쓴 위치 (2026-11-14 사용 의견) -->
           <button id="jump-top" type="button">⤒</button><button id="jump-last" type="button">✎</button>
           <!-- 자주 쓰지 않는 기능은 '더보기'에 (2026-11-13·14 사용 의견: 모바일에서 버튼이 3줄) -->
           <details class="more-actions" id="more-actions"><summary data-i18n="more">더보기 ⋯</summary>
-            <div class="more-panel">
-              <select id="format" title="File format"><option value="md">Markdown (.md)</option><option value="txt">Plain Text (.txt)</option></select>
+            <div class="more-panel" id="more-panel">
+              <label class="more-row"><span data-i18n="moveProjectLabel">프로젝트 이동</span><select id="note-project" title="Move to project"></select></label>
+              <label class="more-row"><span data-i18n="moveFolderLabel">폴더 이동</span><select id="note-folder" title="Move to folder"></select></label>
+              <label class="more-row"><span data-i18n="extLabel">확장자</span><select id="format" title="File format"><option value="md">.md (Markdown)</option><option value="txt">.txt (텍스트)</option></select></label>
               <button id="export-btn" data-i18n="export">다운로드</button>
-              <select id="note-project" title="Move to project" hidden></select>
-              <select id="note-folder" title="Move to folder"></select>
               <button id="import-btn" data-i18n="import">가져오기</button>
               <button id="delete-note" type="button" class="danger-text" data-i18n="deleteNote">메모 삭제</button>
             </div>
@@ -77,6 +77,14 @@
     </main>
   </div>
   <dialog id="account-dialog" class="account-dialog" aria-label="Account"></dialog>
+  <!-- 모바일: 화면 키보드 위 편집 막대 (2026-11-14 사용 의견) — 메모·제목을 쓰는 동안만 -->
+  <div id="key-bar" class="key-bar" role="toolbar" aria-label="Editing" hidden>
+    <button type="button" data-key="undo">↶</button><button type="button" data-key="redo">↷</button>
+    <button type="button" data-key="left">←</button><button type="button" data-key="up">↑</button>
+    <button type="button" data-key="down">↓</button><button type="button" data-key="right">→</button>
+    <button type="button" data-key="top">⤒</button><button type="button" data-key="last">✎</button>
+    <button type="button" data-key="more">⋯</button>
+  </div>
   <dialog id="trash-dialog" class="account-dialog" aria-label="Trash"></dialog>
   <dialog id="help-dialog" class="account-dialog help-dialog" aria-label="Help">
     <div class="account-head"><h2 id="help-title">MemoNest 사용법</h2><button type="button" id="help-close">닫기</button></div>

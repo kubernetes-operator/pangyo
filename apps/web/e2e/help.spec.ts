@@ -71,9 +71,10 @@ test('모바일 세로 화면(사용 의견 5차): 상단은 아이콘, 하단 �
     el.focus();
   });
   await page.keyboard.type('★');
-  await page.locator('#jump-top').click();
+  // 쓰는 동안(모바일)은 키보드 위 막대의 ⤒ ✎
+  await page.locator('#key-bar [data-key="top"]').click();
   expect(await page.locator('#editor').evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.scrollTop])).toEqual([0, 0]);
-  await page.locator('#jump-last').click();
+  await page.locator('#key-bar [data-key="last"]').click();
   const [pos, value, scroll] = await page
     .locator('#editor')
     .evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.value, el.scrollTop] as const);
@@ -81,3 +82,63 @@ test('모바일 세로 화면(사용 의견 5차): 상단은 아이콘, 하단 �
   expect(scroll).toBeGreaterThan(0);
   await context.close();
 });
+
+test('더보기(사용 의견 6차): 이름 붙은 항목, 밖을 누르면 닫힘, 항목을 고르면 닫힘', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('memonest.helpShown', '1'));
+  await page.goto('/');
+  await page.locator('#add-note').click();
+  await page.locator('#name-input').press('Enter');
+  const more = page.locator('#more-actions');
+  await openMore(page);
+  await expect(page.locator('#more-panel .more-row span')).toHaveText(['프로젝트 이동', '폴더 이동', '확장자']);
+  await expect(page.locator('#format option')).toHaveText(['.md (Markdown)', '.txt (텍스트)']);
+  // 메모 창(메뉴가 덮지 않은 곳)을 누르면 닫힘
+  await page.locator('#editor').click({ position: { x: 30, y: 20 } });
+  await expect(more).not.toHaveAttribute('open', '');
+  // 항목을 고르면 닫힘
+  await openMore(page);
+  await page.locator('#format').selectOption('txt');
+  await expect(more).not.toHaveAttribute('open', '');
+});
+
+test('모바일 키보드 막대(사용 의견 6차): 쓰는 동안 ↶ ↷ 커서 ⤒ ✎ ⋯, 더보기는 가려지지 않음', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'ko-KR', hasTouch: true });
+  await context.addInitScript(() => localStorage.setItem('memonest.helpShown', '1'));
+  const page = await context.newPage();
+  await page.goto('/');
+  await page.locator('#add-note').click();
+  await page.locator('#name-input').press('Enter');
+  const bar = page.locator('#key-bar');
+  await expect(bar).toBeHidden();
+  await page.locator('#editor').fill('첫째 줄\n둘째 줄\n셋째');
+  await page.locator('#editor').focus();
+  await expect(bar).toBeVisible();
+  const caret = () => page.locator('#editor').evaluate((el: HTMLTextAreaElement) => el.selectionStart);
+  await page.locator('#editor').evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(2, 2)); // 첫째 줄 2번째
+  await bar.locator('[data-key="down"]').click();
+  expect(await caret()).toBe(5 + 2); // 둘째 줄 같은 칸
+  await bar.locator('[data-key="right"]').click();
+  expect(await caret()).toBe(8);
+  await bar.locator('[data-key="up"]').click();
+  expect(await caret()).toBe(3);
+  await bar.locator('[data-key="left"]').click();
+  expect(await caret()).toBe(2);
+  await expect(page.locator('#editor')).toBeFocused(); // 막대를 눌러도 키보드(포커스) 유지
+  await page.keyboard.type('X');
+  await bar.locator('[data-key="undo"]').click();
+  await expect(page.locator('#editor')).toHaveValue('첫째 줄\n둘째 줄\n셋째');
+  // ⋯ → 더보기 시트가 화면 안에, 메모 창에 가려지지 않고 맨 위에 보임
+  await bar.locator('[data-key="more"]').click();
+  const panel = page.locator('#more-panel');
+  await expect(panel).toBeVisible();
+  const box = (await panel.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(844);
+  const topmost = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('#more-panel') !== null, [
+    box.x + box.width / 2,
+    box.y + 10,
+  ]);
+  expect(topmost).toBe(true);
+  await context.close();
+});
+

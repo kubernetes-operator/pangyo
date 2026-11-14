@@ -119,3 +119,17 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 /* 좁은 세로 화면: 상단은 아이콘, 연결 상태 글자는 숨김(정리 영역의 네트워크 표시로) — 사용 의견 5차 */
 @media(max-width:760px){#connectivity{display:none}.topbar strong small{display:none}.topbar strong{font-size:13px}.doc-actions{flex-wrap:nowrap;overflow-x:auto}}
 .more-actions .more-panel select,.more-actions .more-panel button{width:100%}
+/* 더보기: 이름 붙은 줄 (사용 의견 6차) */
+.more-row{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.more-row select{min-width:0}
+/* 좁은 화면: 더보기는 화면 아래 시트로 (버튼 줄의 가로 스크롤 영역에 잘려 메모 창에 가려지던 문제) */
+@media(max-width:760px){
+  .more-actions .more-panel{position:fixed;left:8px;right:8px;bottom:calc(var(--kb-bottom,0px) + env(safe-area-inset-bottom,0px) + 56px);min-width:0;z-index:30}
+}
+/* 모바일 키보드 위 편집 막대 */
+.key-bar{position:fixed;left:0;right:0;bottom:var(--kb-bottom,0px);z-index:25;display:flex;justify-content:space-between;gap:2px;padding:4px 6px;background:var(--panel);border-top:1px solid var(--ink)}
+.key-bar[hidden]{display:none}
+.key-bar button{flex:1;min-width:0;padding:8px 0;font-size:16px}
+body.kb-open .doc-actions>:not(.more-actions){display:none}
+body.kb-open .doc-actions{border-top:0;padding-top:0}
+body.kb-open .more-actions summary{display:none}

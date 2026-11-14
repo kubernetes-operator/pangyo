@@ -165,7 +165,7 @@ test('프로젝트(ADR-0005): 만들기·전환하면 폴더와 메모가 따로
   // 메모를 기본 → 업무로 옮기면 같은 경로 메모가 있어 거절
   await page.locator('#tree button', { hasText: '기본 메모' }).click();
   await openMore(page);
-  await page.locator('#note-project').selectOption({ label: '프로젝트 이동: 업무' });
+  await page.locator('#note-project').selectOption({ label: '업무' });
   await expect(page.locator('#project-status')).toContainText('같은 이름의 메모');
 
   // 이름 바꾸기
@@ -190,7 +190,7 @@ test('프로젝트(ADR-0005): 만들기·전환하면 폴더와 메모가 따로
   await expect(page.locator('#tree')).toContainText('기본 메모');
   await page.locator('#tree button', { hasText: '기본 메모' }).click();
   await openMore(page);
-  await page.locator('#note-project').selectOption({ label: '프로젝트 이동: 보관' });
+  await page.locator('#note-project').selectOption({ label: '보관' });
   await expect(page.locator('#project-select option:checked')).toHaveText('보관');
   await expect(page.locator('#tree')).toContainText('기본 메모');
   await page.locator('#project-select').selectOption({ label: '회사' });
@@ -217,7 +217,7 @@ test('사용 의견(2026-11-13 2차): 새 메모 기본 제목은 일시 Memo, �
   // 폴더 이동
   await createNote(page, '옮길 메모');
   await openMore(page);
-  await page.locator('#note-folder').selectOption({ label: '폴더 이동: /보관' });
+  await page.locator('#note-folder').selectOption({ label: '/보관' });
   await expect(page.locator('#folder-path')).toHaveText('/보관');
   const selected = page.locator('#tree button[aria-selected="true"]');
   await expect(selected).toHaveText(['▸ 보관', '· 옮길 메모.md']);

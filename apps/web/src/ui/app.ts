@@ -210,6 +210,106 @@ function renderModeButtons(): void {
   $('timer').title = w.timerHint;
 }
 
+// === 더보기 메뉴 (2026-11-14 사용 의견: 밖을 눌러도 계속 떠 있음, 세로 화면에서 메모 창에 가려짐) ===
+function closeMore(): void {
+  $<HTMLDetailsElement>('more-actions').open = false;
+}
+
+function setupMoreMenu(): void {
+  const more = $<HTMLDetailsElement>('more-actions');
+  // 메뉴 밖을 누르면 닫힘 (키보드 막대의 ⋯는 여닫기 버튼이라 제외)
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const target = e.target as Node;
+      if (more.open && !more.contains(target) && !$('key-bar').contains(target)) closeMore();
+    },
+    true,
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && more.open) closeMore();
+  });
+  // 항목을 고르면 닫힘
+  for (const id of ['export-btn', 'import-btn', 'delete-note']) $(id).addEventListener('click', closeMore);
+  for (const id of ['note-project', 'note-folder', 'format']) $(id).addEventListener('change', closeMore);
+}
+
+// === 모바일 키보드 위 편집 막대 (2026-11-14 사용 의견) ===
+// 좁은 화면에서 본문·제목을 쓰는 동안 화면 키보드 바로 위에: 실행취소·다시 실행·커서 ←↑↓→·맨 위·마지막 위치·더보기
+function caretMove(dir: 'left' | 'right' | 'up' | 'down'): void {
+  const box = editor();
+  const text = box.value;
+  const at = box.selectionStart;
+  let next = at;
+  if (dir === 'left') next = Math.max(0, at - 1);
+  else if (dir === 'right') next = Math.min(text.length, at + 1);
+  else {
+    const lineStart = text.lastIndexOf('\n', at - 1) + 1;
+    const column = at - lineStart;
+    if (dir === 'up') {
+      if (lineStart === 0) next = 0;
+      else {
+        const prevStart = text.lastIndexOf('\n', lineStart - 2) + 1;
+        next = Math.min(prevStart + column, lineStart - 1);
+      }
+    } else {
+      const lineEnd = text.indexOf('\n', at);
+      if (lineEnd < 0) next = text.length;
+      else {
+        const nextEnd = text.indexOf('\n', lineEnd + 1);
+        next = Math.min(lineEnd + 1 + column, nextEnd < 0 ? text.length : nextEnd);
+      }
+    }
+  }
+  box.setSelectionRange(next, next);
+}
+
+function setupKeyBar(): void {
+  const bar = $('key-bar');
+  const vv = window.visualViewport;
+  const place = () => {
+    // 화면 키보드가 올라오면 보이는 영역(visualViewport)의 맨 아래에 붙임
+    const bottom = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.documentElement.style.setProperty('--kb-bottom', `${bottom}px`);
+  };
+  const update = () => {
+    const active = document.activeElement;
+    const editing = isSmallScreen() && (active === editor() || active === $('title'));
+    bar.hidden = !editing;
+    document.body.classList.toggle('kb-open', editing);
+    place();
+  };
+  for (const el of [editor(), $('title')]) {
+    el.addEventListener('focus', update);
+    el.addEventListener('blur', () => setTimeout(update, 0)); // 막대 버튼으로 옮겨 가는 순간은 제외
+  }
+  vv?.addEventListener('resize', place);
+  vv?.addEventListener('scroll', place);
+  // 버튼을 눌러도 본문 포커스(=화면 키보드)를 잃지 않게
+  bar.addEventListener('pointerdown', (e) => e.preventDefault());
+  bar.addEventListener('click', (e) => {
+    const key = (e.target as HTMLElement).closest<HTMLButtonElement>('button')?.dataset.key;
+    if (!key) return;
+    if (document.activeElement !== editor() && key !== 'more') editor().focus();
+    if (key === 'undo') $('undo-btn').click();
+    else if (key === 'redo') $('redo-btn').click();
+    else if (key === 'top') jumpTo(0);
+    else if (key === 'last') jumpToLastEdit();
+    else if (key === 'more') {
+      const more = $<HTMLDetailsElement>('more-actions');
+      more.open = !more.open;
+    } else caretMove(key as 'left' | 'right' | 'up' | 'down');
+  });
+  const w = () => WORDS[state.locale];
+  const titles: Record<string, () => string> = {
+    undo: () => w().undo, redo: () => w().redo, top: () => w().jumpTop, last: () => w().jumpLast, more: () => w().more,
+  };
+  for (const b of bar.querySelectorAll<HTMLButtonElement>('button')) {
+    const t = titles[b.dataset.key ?? ''];
+    if (t) b.setAttribute('aria-label', t());
+  }
+}
+
 // === 긴 메모: 맨 위 / 마지막으로 쓴 위치 (2026-11-14 사용 의견) — 위치는 이 기기에만 기억 ===
 const CARET_KEY = (id: string) => `memonest.lastEdit.${id}`;
 function rememberCaret(): void {
@@ -1118,7 +1218,7 @@ function renderNoteProject(): void {
   select.disabled = !note || state.lease?.kind === 'denied';
   if (!note) return select.replaceChildren();
   projectOptions(select, projectOf(note));
-  for (const o of select.options) o.textContent = WORDS[state.locale].moveTo + o.textContent;
+  // 선택 상자 앞에 '프로젝트 이동' 이름이 있으므로 항목은 프로젝트 이름만
 }
 
 async function switchProject(id: string): Promise<void> {
@@ -1446,7 +1546,7 @@ function renderNoteFolder(): void {
     ...projectFolderPaths().map((path) => {
       const o = document.createElement('option');
       o.value = path;
-      o.textContent = WORDS[state.locale].moveFolder + '/' + path;
+      o.textContent = '/' + path; // 앞에 '폴더 이동' 이름이 있음
       o.selected = path === note.folder;
       return o;
     }),
@@ -2058,6 +2158,8 @@ function bindEvents(): void {
     applyEdit('content', (e.target as HTMLTextAreaElement).value);
     rememberCaret();
   };
+  setupMoreMenu();
+  setupKeyBar();
   $('jump-top').onclick = () => jumpTo(0);
   $('jump-last').onclick = jumpToLastEdit;
   window.matchMedia(SETTINGS.smallScreenQuery).addEventListener('change', renderModeButtons);
