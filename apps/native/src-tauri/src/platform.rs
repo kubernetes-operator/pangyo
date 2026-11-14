@@ -85,6 +85,18 @@ pub fn top_inset() -> f64 {
     }
 }
 
+/// 화면 아래쪽에서 비워 둘 높이(CSS px). Android 내비게이션 막대, 다른 OS는 0
+pub fn bottom_inset() -> f64 {
+    #[cfg(target_os = "android")]
+    {
+        android::navigation_bar_inset().unwrap_or(0.0)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        0.0
+    }
+}
+
 /// 사람이 알아볼 기기 이름 (장비 등록 기본값)
 pub fn device_name() -> Option<String> {
     #[cfg(target_os = "android")]
@@ -208,6 +220,76 @@ pub mod android {
                 .l()?;
             let density = env.get_field(&metrics, "density", "F")?.f()?;
             Ok((density > 0.0).then(|| f64::from(px) / f64::from(density)))
+        })
+        .ok()
+        .flatten()
+    }
+
+    /// 하단 내비게이션 막대 높이(CSS px). 앱 화면이 막대 밑까지 그려질 때 아래 메뉴가 가려지지 않게 (2026-11-14 사용 의견).
+    /// Android 11+의 실제 창 여백(WindowInsets)만 씀 — 제스처 내비게이션이면 작게, 가리지 않으면 0
+    pub fn navigation_bar_inset() -> Option<f64> {
+        with_env(|env, context| {
+            let attempt = (|| -> jni::errors::Result<Option<f64>> {
+                let window = env
+                    .call_method(context, "getWindow", "()Landroid/view/Window;", &[])?
+                    .l()?;
+                let decor = env
+                    .call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?
+                    .l()?;
+                let insets = env
+                    .call_method(
+                        &decor,
+                        "getRootWindowInsets",
+                        "()Landroid/view/WindowInsets;",
+                        &[],
+                    )?
+                    .l()?;
+                if insets.is_null() {
+                    return Ok(None);
+                }
+                let kind = env
+                    .call_static_method(
+                        "android/view/WindowInsets$Type",
+                        "navigationBars",
+                        "()I",
+                        &[],
+                    )?
+                    .i()?;
+                let bars = env
+                    .call_method(
+                        &insets,
+                        "getInsets",
+                        "(I)Landroid/graphics/Insets;",
+                        &[JValue::Int(kind)],
+                    )?
+                    .l()?;
+                let bottom = env.get_field(&bars, "bottom", "I")?.i()?;
+                let res = env
+                    .call_method(
+                        context,
+                        "getResources",
+                        "()Landroid/content/res/Resources;",
+                        &[],
+                    )?
+                    .l()?;
+                let metrics = env
+                    .call_method(
+                        &res,
+                        "getDisplayMetrics",
+                        "()Landroid/util/DisplayMetrics;",
+                        &[],
+                    )?
+                    .l()?;
+                let density = env.get_field(&metrics, "density", "F")?.f()?;
+                Ok((density > 0.0).then(|| f64::from(bottom) / f64::from(density)))
+            })();
+            match attempt {
+                Ok(v) => Ok(v),
+                Err(_) => {
+                    let _ = env.exception_clear(); // Android 10 이하 등: 알 수 없음 → 0
+                    Ok(None)
+                }
+            }
         })
         .ok()
         .flatten()

@@ -217,18 +217,46 @@ async fn install_update(
         let installer = std::env::temp_dir().join("MemoNest-update-setup.exe");
         std::fs::write(&installer, &data).map_err(|e| e.to_string())?;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        // 설치가 끝나면 다시 실행. 앱은 바로 닫아 설치 프로그램이 파일을 바꿀 수 있게
-        let script = format!(
-            "start \"\" /wait \"{}\" /S & start \"\" \"{}\"",
-            installer.display(),
-            exe.display()
-        );
+        // 설치가 끝나면 다시 실행. 앱은 바로 닫아 설치 프로그램이 파일을 바꿀 수 있게.
+        // cmd는 Rust 기본 인자 따옴표(\")를 이해하지 못해 '\\'를 찾을 수 없다는 오류가 났음(2026-11-14 사용자 확인)
+        // → 명령줄을 그대로(raw_arg) 넘김
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         std::process::Command::new("cmd")
-            .args(["/C", &script])
+            .raw_arg(update_command_line(
+                &installer.display().to_string(),
+                &exe.display().to_string(),
+            ))
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
         app.exit(0);
         Ok(())
+    }
+}
+
+/// Windows 업데이트 명령줄 (cmd 뒤에 그대로 붙임): 앱이 닫힐 때까지 2초 기다림 → 설치 프로그램을 조용히(/S) 실행하고
+/// 끝날 때까지 기다림 → 앱 다시 실행. `/S /C "..."`: cmd가 바깥 따옴표 한 쌍만 벗기고 안쪽 따옴표는 그대로 씀
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn update_command_line(installer: &str, exe: &str) -> String {
+    format!(
+        "/S /C \"ping -n 3 127.0.0.1 >nul & start \"\" /wait \"{installer}\" /S & start \"\" \"{exe}\"\""
+    )
+}
+
+#[cfg(test)]
+mod update_tests {
+    #[test]
+    fn update_command_line_keeps_plain_quotes_for_cmd() {
+        let line = super::update_command_line(
+            r"C:\Users\me\AppData\Local\Temp\MemoNest-update-setup.exe",
+            r"C:\Program Files\MemoNest\memonest-native.exe",
+        );
+        assert_eq!(
+            line,
+            r#"/S /C "ping -n 3 127.0.0.1 >nul & start "" /wait "C:\Users\me\AppData\Local\Temp\MemoNest-update-setup.exe" /S & start "" "C:\Program Files\MemoNest\memonest-native.exe"""#
+        );
+        assert!(!line.contains("\\\""), "cmd가 이해하지 못하는 \\\" 없음");
     }
 }
 
@@ -269,6 +297,12 @@ fn save_download(app: tauri::AppHandle, file_name: String, data: Vec<u8>) -> Com
 #[tauri::command]
 fn top_inset() -> f64 {
     platform::top_inset()
+}
+
+/// 화면 아래쪽 여백(내비게이션 막대 높이, CSS px). 키보드가 내려갔을 때 아래 메뉴가 가려지지 않게
+#[tauri::command]
+fn bottom_inset() -> f64 {
+    platform::bottom_inset()
 }
 
 /// Android는 설정의 '기기 이름'(없으면 제조사·모델), 데스크톱은 호스트 이름 (2026-11-13 사용자 확인: Android에서 비어 있었음)
@@ -383,6 +417,7 @@ pub fn run() {
             device_status,
             device_hostname,
             top_inset,
+            bottom_inset,
             app_info,
             open_download,
             save_download,

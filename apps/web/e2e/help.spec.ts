@@ -142,3 +142,43 @@ test('모바일 키보드 막대(사용 의견 6차): 쓰는 동안 ↶ ↷ 커�
   await context.close();
 });
 
+test('사용 의견 7차: 창 밖을 누르면 닫힘 · 좁은 화면은 전환 버튼 하나 · 키보드 막대가 메모 끝을 가리지 않음', async ({ browser }) => {
+  // 1) 창 밖(어두운 배경) 누르면 닫힘 — 계정·도움말·휴지통
+  const wide = await browser.newPage();
+  await wide.addInitScript(() => localStorage.setItem('memonest.helpShown', '1'));
+  await wide.goto('/');
+  for (const [button, dialog] of [['#account-btn', '#account-dialog'], ['#help-btn', '#help-dialog'], ['#trash-btn', '#trash-dialog']]) {
+    await wide.locator(button).click();
+    await expect(wide.locator(dialog)).toBeVisible();
+    await wide.mouse.click(5, 300);
+    await expect(wide.locator(dialog)).toBeHidden();
+  }
+  // 창 안을 누르면 그대로
+  await wide.locator('#help-btn').click();
+  await wide.locator('#help-text').click();
+  await expect(wide.locator('#help-dialog')).toBeVisible();
+  await wide.close();
+
+  // 2) 좁은 화면: '목록+메모 함께' 버튼 없이 전환 버튼 하나
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'ko-KR', hasTouch: true });
+  await context.addInitScript(() => localStorage.setItem('memonest.helpShown', '1'));
+  const page = await context.newPage();
+  await page.goto('/');
+  await expect(page.locator('#split-btn')).toBeHidden();
+  await expect(page.locator('#toggle-btn')).toBeVisible();
+  await page.locator('#toggle-btn').click(); // 메모만
+  await expect(page.locator('#split-btn')).toBeHidden();
+  await page.locator('#toggle-btn').click(); // 다시 목록
+
+  // 3) 키보드 막대가 떠 있어도 메모 창의 아래 끝은 막대 위
+  await page.locator('#add-note').click();
+  await page.locator('#name-input').press('Enter');
+  await expect(page.locator('#name-dialog')).toHaveCount(0);
+  await page.locator('#editor').tap({ position: { x: 40, y: 20 } });
+  await expect(page.locator('#key-bar')).toBeVisible();
+  const editorBox = (await page.locator('#editor').boundingBox())!;
+  const barBox = (await page.locator('#key-bar').boundingBox())!;
+  expect(editorBox.y + editorBox.height).toBeLessThanOrEqual(barBox.y + 1);
+  await context.close();
+});
+

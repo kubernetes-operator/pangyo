@@ -29,6 +29,7 @@ export const COMMANDS = {
   saveDownload: 'save_download',
   installUpdate: 'install_update',
   topInset: 'top_inset',
+  bottomInset: 'bottom_inset',
   devicePair: 'device_pair',
   deviceUnpair: 'device_unpair',
   serverRequest: 'server_request',
@@ -79,6 +80,8 @@ export const appApi = {
   saveDownload: (fileName: string, data: number[]) => invoke<string>(COMMANDS.saveDownload, { fileName, data }),
   /** 화면 위쪽 여백 (Android 상태바 높이, CSS px) */
   topInset: () => invoke<number>(COMMANDS.topInset).catch(() => 0),
+  /** 화면 아래쪽 여백 (Android 내비게이션 막대 높이, CSS px) */
+  bottomInset: () => invoke<number>(COMMANDS.bottomInset).catch(() => 0),
   /** Windows: 받아서 검증 → 조용히 설치 → 다시 실행 (다른 OS는 'unsupported') */
   installUpdate: (url: string, sha256: string) => invoke<void>(COMMANDS.installUpdate, { url, sha256 }),
 };

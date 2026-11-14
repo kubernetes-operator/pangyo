@@ -172,8 +172,8 @@ def main() -> int:
                 print("화면 조작 스크립트가 실행되지 않았습니다: e2e feature 빌드가 아닙니다. make desktop-sync-check 로 실행하세요")
             print("--- app.log ---\n" + "\n".join(l for l in log().splitlines() if not l.startswith("libEGL")))
             return 1
-        results.append(wait("9. 앱 안 업데이트: 게시 빌드가 다르면 '새 버전 있음' 표시",
-                            lambda: "[e2e] update shown" in log() or ("[e2e] update not shown" in log() and None)))
+        results.append(wait("9. 앱 안 업데이트: 게시 빌드가 다르면 '새 버전 있음' 표시 + 장비 연결 창의 '지금 업데이트'",
+                            lambda: "[e2e] install button in panel" in log()))
         by_title = lambda: {n["title"]: n for n in api.notes().values() if not n["deleted"]}
         results.append(wait("1. 데스크톱 파일 → 서버", lambda: {"Inbox", "rename-me"} <= set(by_title())))
         results.append(wait("2. 서버 메모 → 데스크톱 파일",
@@ -312,6 +312,15 @@ E2E_JS = r"""
     await sleep(300);
   }
   if (document.querySelector('#update-btn')?.hidden === false) console.log('[e2e] update shown');
+  // 장비 연결 창에서도 '지금 업데이트' (2026-11-14 사용 의견) — 누르지는 않음(브라우저가 열림)
+  document.querySelector('#account-btn').click();
+  (await waitFor('#check-update')).click();
+  for (let i = 0; document.querySelector('#install-update')?.hidden !== false; i++) {
+    if (i > 50) break;
+    await sleep(200);
+  }
+  if (document.querySelector('#install-update')?.hidden === false) console.log('[e2e] install button in panel');
+  document.querySelector('#account-close').click();
   document.querySelector('#account-close').click();
   for (;;) {
     if ((document.querySelector('#sync-status')?.textContent ?? '').includes('밖에서 삭제')) break;
