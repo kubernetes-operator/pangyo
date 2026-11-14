@@ -85,15 +85,19 @@ pub fn top_inset() -> f64 {
     }
 }
 
-/// 화면 아래쪽에서 비워 둘 높이(CSS px). Android 내비게이션 막대, 다른 OS는 0
-pub fn bottom_inset() -> f64 {
+/// 화면 아래쪽 여백 후보(CSS px): (실제 창 여백, 시스템 기본 내비게이션 막대 높이). 다른 OS는 (0, 0).
+/// 화면(JS)이 앱 창이 막대 밑까지 그려지는지 보고 고름 (2026-11-14 사용자 확인: 창 여백이 0으로 와서 버튼이 가림)
+pub fn bottom_inset() -> (f64, f64) {
     #[cfg(target_os = "android")]
     {
-        android::navigation_bar_inset().unwrap_or(0.0)
+        (
+            android::navigation_bar_inset().unwrap_or(0.0),
+            android::navigation_bar_dimen().unwrap_or(0.0),
+        )
     }
     #[cfg(not(target_os = "android"))]
     {
-        0.0
+        (0.0, 0.0)
     }
 }
 
@@ -290,6 +294,53 @@ pub mod android {
                     Ok(None)
                 }
             }
+        })
+        .ok()
+        .flatten()
+    }
+
+    /// 시스템이 정한 내비게이션 막대 기본 높이(CSS px, dimen navigation_bar_height). 창 여백을 못 읽었을 때의 대안
+    pub fn navigation_bar_dimen() -> Option<f64> {
+        with_env(|env, context| {
+            let res = env
+                .call_method(
+                    context,
+                    "getResources",
+                    "()Landroid/content/res/Resources;",
+                    &[],
+                )?
+                .l()?;
+            let name = env.new_string("navigation_bar_height")?;
+            let kind = env.new_string("dimen")?;
+            let pkg = env.new_string("android")?;
+            let id = env
+                .call_method(
+                    &res,
+                    "getIdentifier",
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                    &[
+                        JValue::Object(&name),
+                        JValue::Object(&kind),
+                        JValue::Object(&pkg),
+                    ],
+                )?
+                .i()?;
+            if id == 0 {
+                return Ok(None);
+            }
+            let px = env
+                .call_method(&res, "getDimensionPixelSize", "(I)I", &[JValue::Int(id)])?
+                .i()?;
+            let metrics = env
+                .call_method(
+                    &res,
+                    "getDisplayMetrics",
+                    "()Landroid/util/DisplayMetrics;",
+                    &[],
+                )?
+                .l()?;
+            let density = env.get_field(&metrics, "density", "F")?.f()?;
+            Ok((density > 0.0 && px > 0).then(|| f64::from(px) / f64::from(density)))
         })
         .ok()
         .flatten()

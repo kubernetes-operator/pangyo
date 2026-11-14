@@ -2892,6 +2892,10 @@
             "type": "string",
             "maxLength": 60,
             "description": "다른 기기에 보일 이름"
+          },
+          "takeover": {
+            "type": "boolean",
+            "description": "다른 기기가 편집 중이어도 편집 권한을 가져옴(새 fencing token). 이전 보유자의 저장은 423, 올리지 못한 내용은 그 기기에서 충돌 검토로 보관"
           }
         }
       },

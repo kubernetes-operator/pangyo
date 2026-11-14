@@ -81,7 +81,8 @@ export const appApi = {
   /** 화면 위쪽 여백 (Android 상태바 높이, CSS px) */
   topInset: () => invoke<number>(COMMANDS.topInset).catch(() => 0),
   /** 화면 아래쪽 여백 (Android 내비게이션 막대 높이, CSS px) */
-  bottomInset: () => invoke<number>(COMMANDS.bottomInset).catch(() => 0),
+  bottomInset: () =>
+    invoke<{ insets: number; navBar: number }>(COMMANDS.bottomInset).catch(() => ({ insets: 0, navBar: 0 })),
   /** Windows: 받아서 검증 → 조용히 설치 → 다시 실행 (다른 OS는 'unsupported') */
   installUpdate: (url: string, sha256: string) => invoke<void>(COMMANDS.installUpdate, { url, sha256 }),
 };

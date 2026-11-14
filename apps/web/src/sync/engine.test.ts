@@ -62,13 +62,15 @@ class FakeServer {
         this.notes.set(id, next);
         return structuredClone(next);
       },
-      acquireLease: async (id, clientId, label): Promise<LeaseGrant> => {
+      acquireLease: async (id, clientId, label, takeover): Promise<LeaseGrant> => {
         this.guard();
         if (!this.notes.get(id) || this.notes.get(id)!.deleted) this.fail(404, 'note_not_found', 'not found');
         const l = this.leases.get(id);
-        if (l && l.expires > Date.now() && l.holder !== clientId)
+        if (takeover && l && l.expires > Date.now() && l.holder !== clientId) this.leases.delete(id); // 새 token
+        else if (l && l.expires > Date.now() && l.holder !== clientId)
           this.fail(423, 'lease_held', `${l.label}에서 편집 중입니다`, { holderLabel: l.label, expiresAt: new Date(l.expires).toISOString() });
-        const token = l && l.expires > Date.now() ? l.token : (this.epochs.get(id) ?? 0) + 1;
+        const current = this.leases.get(id);
+        const token = current && current.expires > Date.now() ? current.token : (this.epochs.get(id) ?? 0) + 1;
         this.epochs.set(id, token);
         const expires = Date.now() + LEASE_TTL * 1000;
         this.leases.set(id, { holder: clientId, label, token, expires });
@@ -389,6 +391,53 @@ describe('삭제 대기 (2026-11-13 사용자 확인: 메모 삭제 시 "사용 
     await a.engine.syncOnce();
     expect(a.store.notes.map((x) => [x.content, !!x.sync?.deleting])).toEqual([['v2 휴대폰에서 고침', false]]);
     expect(server.notes.get(n.id)!.deleted).toBe(false);
+  });
+});
+
+describe('편집 권한 가져오기 (2026-11-14 사용자 승인)', () => {
+  it('다른 기기가 편집 중이어도 가져오면 이 기기가 편집, 빼앗긴 기기의 올리지 못한 내용은 충돌 검토로 보관', async () => {
+    const server = new FakeServer();
+    const a = await device(server, 'laptop', '노트북');
+    a.store.notes.push(note('공유', 'v1'));
+    await a.engine.adoptLocalNotes();
+    await a.engine.syncOnce();
+    const b = await device(server, 'phone', '휴대폰');
+    await b.engine.syncOnce();
+    const an = a.store.notes[0]!;
+    const bn = b.store.notes[0]!;
+    expect((await a.engine.beginEdit(an)).kind).toBe('held');
+    expect((await b.engine.beginEdit(bn)).kind).toBe('denied');
+
+    // 노트북이 아직 올리지 못한 입력
+    an.content = 'v2 노트북 초안';
+    an.sync = { ...an.sync!, dirty: true };
+    // 휴대폰이 가져와서 고침
+    expect((await b.engine.takeOver(bn)).kind).toBe('held');
+    edit(b.engine, bn, 'v2 휴대폰');
+    await b.engine.syncOnce();
+    // 노트북의 저장은 거절(덮어쓰지 않음) → 초안 유지 → 다음 가져오기에서 충돌 검토
+    await a.engine.syncOnce();
+    expect(server.notes.get(an.id)!.content).toBe('v2 휴대폰');
+    expect(an.content).toBe('v2 노트북 초안');
+    expect(an.sync?.conflict?.content).toBe('v2 휴대폰');
+    // 노트북이 다시 편집하려 하면 휴대폰에서 편집 중
+    expect(await a.engine.beginEdit(an)).toMatchObject({ kind: 'denied', holderLabel: '휴대폰' });
+  });
+
+  it('최신 내용 받기: 20초를 기다리지 않고 그 메모만 바로', async () => {
+    const server = new FakeServer();
+    const a = await device(server, 'laptop', '노트북');
+    a.store.notes.push(note('공유', 'v1'));
+    await a.engine.adoptLocalNotes();
+    await a.engine.syncOnce();
+    const b = await device(server, 'phone', '휴대폰');
+    await b.engine.syncOnce();
+    const an = a.store.notes[0]!;
+    await a.engine.beginEdit(an);
+    edit(a.engine, an, 'v2');
+    await a.engine.syncOnce();
+    await b.engine.refreshNote(an.id);
+    expect(b.store.notes[0]!.content).toBe('v2');
   });
 });
 

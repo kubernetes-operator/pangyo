@@ -613,7 +613,8 @@ function renderSyncInfo(): void {
     lease: state.lease,
     status: state.syncStatus,
     locale: state.locale,
-    onRetry: () => void requestEdit(),
+    onRetry: () => void refreshAndRetry(),
+    onTakeover: () => void takeOverEdit(),
     onResolve: (choice) => void resolveConflict(choice),
   });
 }
@@ -992,11 +993,16 @@ async function setupDevice(): Promise<void> {
   void tauri.appApi.topInset().then((px) => {
     if (px > 0) document.documentElement.style.setProperty('--inset-top', `${Math.round(px)}px`);
   });
-  // 하단 내비게이션 막대 높이 (키보드가 내려갔을 때 아래 메뉴가 가려지지 않게, 2026-11-14 사용 의견)
-  void tauri.appApi.bottomInset().then((px) => {
-    navInsetBottom = Math.max(0, Math.round(px));
+  // 하단 내비게이션 막대 높이 (키보드가 내려갔을 때 아래 메뉴가 가려지지 않게, 2026-11-14 사용 의견).
+  // 시작 직후에는 창 여백을 못 읽을 수 있어 몇 번 더 물음. 그래도 0이면, 앱 화면이 화면 끝까지 그려질 때만 기본 높이 사용
+  const readBottom = async () => {
+    const { insets, navBar } = await tauri.appApi.bottomInset();
+    const fullScreen = window.innerHeight >= window.screen.height - 2;
+    navInsetBottom = Math.max(0, Math.round(insets > 0 ? insets : fullScreen ? navBar : 0));
     placeBottom();
-  });
+  };
+  for (const delay of [0, 600, 2000]) setTimeout(() => void readBottom(), delay);
+  window.addEventListener('orientationchange', () => setTimeout(() => void readBottom(), 500));
   const { createDevicePanel } = await import('../account/device-panel');
   setTransport(tauri.deviceTransport(onDeviceUnauthorized));
   device.api = tauri.deviceApi;
@@ -1052,6 +1058,36 @@ function requestEdit(): Promise<void> {
       state.leaseRequest = null;
     });
   return state.leaseRequest;
+}
+
+/** 읽기 전용일 때 '최신 내용 받기': 이 메모를 서버에서 바로 받고, 다른 기기가 편집을 끝냈으면 바로 편집 가능 */
+async function refreshAndRetry(): Promise<void> {
+  const note = state.note;
+  if (!note || !state.sync) return;
+  await state.sync.refreshNote(note.id).catch(console.error);
+  if (state.note === note) renderEditor();
+  await requestEdit();
+}
+
+/** '여기서 편집하기' (2026-11-14 사용자 승인): 확인 후 편집 권한을 이 기기로 */
+async function takeOverEdit(): Promise<void> {
+  const note = state.note;
+  const engine = state.sync;
+  if (!note || !engine || state.lease?.kind !== 'denied') return;
+  const w = WORDS[state.locale];
+  const who = state.lease.holderLabel || '?';
+  const ok = await askConfirm({ message: w.takeoverConfirm.replaceAll('{who}', who), ok: w.takeoverOk, cancel: w.cancel });
+  if (!ok || state.note !== note) return;
+  const lease = await engine.takeOver(note).catch((e: unknown) => {
+    console.error(e);
+    return null;
+  });
+  if (!lease || state.note !== note) return;
+  state.lease = lease;
+  state.lastEditAt = Date.now();
+  setReadOnly(lease.kind === 'denied');
+  renderEditor();
+  if (lease.kind === 'held') editor().focus();
 }
 
 function releaseEdit(keepalive = false): void {

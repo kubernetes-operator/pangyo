@@ -70,7 +70,8 @@ export interface SyncApi {
   deleteProject?(id: string): Promise<ServerProject>;
   get(id: string): Promise<ServerNote>;
   put(id: string, body: Record<string, unknown>): Promise<ServerNote>;
-  acquireLease(id: string, clientId: string, label: string): Promise<LeaseGrant>;
+  /** takeover: 다른 기기가 편집 중이어도 편집 권한을 가져옴 (2026-11-14 사용자 승인) */
+  acquireLease(id: string, clientId: string, label: string, takeover?: boolean): Promise<LeaseGrant>;
   releaseLease(id: string, clientId: string, keepalive?: boolean): Promise<void>;
   /** 서버에서 삭제 (묘비). 임대·fencing token 필요 */
   remove(id: string, baseVersion: number, clientId: string, fencingToken: number | null): Promise<ServerNote>;
@@ -286,6 +287,11 @@ export class SyncEngine {
     // 손대지 않은 기본 문서는 서버 것으로 그냥 맞춤 (충돌로 보지 않음)
     const sync: NoteSync = local.sync ?? { version: 0, dirty: !this.opts.pristine?.(local) };
     if (server.version <= sync.version) return; // 이미 반영됨 (내가 올린 결과 등)
+    // 편집 권한을 갖고 있는데 다른 기기가 새 버전을 저장함 = 권한을 빼앗김(여기서 편집하기) → 바로 읽기 전용으로
+    if (this.leases.has(local.id) && !server.deleted) {
+      this.dropLease(local.id);
+      this.opts.onLeaseLost?.(local.id, 'lease_taken');
+    }
     if (sync.deleting && !server.deleted) {
       // 지우려던 사이 다른 기기에서 고쳐짐 → 지우지 않고 최신 내용을 받음
       local.sync = { version: sync.version, dirty: false, error: DELETE_CANCELLED };
@@ -491,6 +497,46 @@ export class SyncEngine {
   async beginEdit(note: Note): Promise<LeaseState> {
     if (!note.sync || note.sync.version === 0) return { kind: 'not-needed' };
     return this.ensureLease(note.id, true);
+  }
+
+  /**
+   * 편집 권한 강제로 가져오기 (2026-11-14 사용자 승인, ADR-0003 보완): 서버가 새 fencing token을 줌 →
+   * 지금 편집 중이던 기기는 다음 갱신·저장 때 거절되어 읽기 전용이 되고, 그 기기의 올리지 못한 내용은 충돌 검토로 보관됨.
+   * 가져오기 전에 서버의 최신 내용을 먼저 받음
+   */
+  async takeOver(note: Note): Promise<LeaseState> {
+    if (!note.sync || note.sync.version === 0) return { kind: 'not-needed' };
+    await this.refreshNote(note.id);
+    try {
+      const grant = await this.api.acquireLease(note.id, this.opts.clientId, this.opts.label, true);
+      const held = this.leases.get(note.id);
+      this.leases.set(note.id, {
+        token: grant.fencingToken,
+        expiresAt: Date.parse(grant.expiresAt),
+        ttlMs: grant.ttlSeconds * 1000,
+        editing: true,
+        timer: held?.timer,
+      });
+      this.startRenew(note.id);
+      return { kind: 'held', expiresAt: grant.expiresAt };
+    } catch (e) {
+      const err = asSyncError(e);
+      if (err.offline) return { kind: 'offline' };
+      if (err.status === 404) return { kind: 'not-needed' };
+      throw e;
+    }
+  }
+
+  /** 이 메모 하나의 최신 내용을 서버에서 바로 받음 (20초 주기를 기다리지 않고). 내 변경이 있으면 지금처럼 충돌 검토 */
+  async refreshNote(noteId: string): Promise<void> {
+    try {
+      const server = await this.api.get(noteId);
+      await this.apply(server);
+    } catch (e) {
+      const err = asSyncError(e);
+      if (err.offline) throw e;
+      if (err.status !== 404) throw e;
+    }
   }
 
   /** 편집 끝 (다른 메모로 이동, 창 숨김, 오래 입력 없음) */

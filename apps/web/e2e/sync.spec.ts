@@ -212,3 +212,38 @@ test('휴지통(서버 보관 7일): 지운 동기화 메모를 되살리면 다
   await expect(b.locator('#tree')).toContainText('되살릴 메모', { timeout: 30_000 });
 });
 
+test('여기서 편집하기(2026-11-14 사용자 승인): 다른 기기가 편집 중이어도 가져오면 이 기기가 편집, 그쪽은 읽기 전용', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const email = `take-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+  const a = await deviceFor(browser, email, true);
+  await createNote(a, '함께 쓰는 메모', '처음');
+  await synced(a);
+  const b = await deviceFor(browser, email, false);
+  await openNote(b, '함께 쓰는 메모');
+
+  // A가 편집 중 → B는 읽기 전용 + 두 버튼
+  await a.locator('#editor').click();
+  await a.locator('#editor').press('End');
+  await a.locator('#editor').pressSequentially(' A');
+  await synced(a);
+  await b.locator('#editor').click(); // 편집하려 하면 읽기 전용 안내
+  await expect(b.locator('#sync-banner')).toHaveAttribute('data-kind', 'locked');
+  await b.locator('#lease-retry').click(); // 최신 내용 받기
+  await expect(b.locator('#editor')).toHaveValue('처음 A');
+  await expect(b.locator('#sync-banner')).toHaveAttribute('data-kind', 'locked');
+
+  // B: 여기서 편집하기 → 확인 → 편집 가능
+  await b.locator('#lease-takeover').click();
+  await expect(b.locator('#confirm-dialog')).toContainText('편집 권한을 이 기기로');
+  await b.locator('#confirm-ok').click();
+  await expect(b.locator('#sync-banner')).toBeHidden();
+  await expect(b.locator('#editor')).toBeEditable();
+  await b.locator('#editor').press('End');
+  await b.locator('#editor').pressSequentially(' B');
+  await synced(b);
+
+  // A는 곧 읽기 전용, 최신 내용(B의 수정)을 봄
+  await expect(a.locator('#sync-banner')).toHaveAttribute('data-kind', 'locked', { timeout: 30_000 });
+  await expect(a.locator('#editor')).toHaveValue('처음 A B', { timeout: 30_000 });
+});
+

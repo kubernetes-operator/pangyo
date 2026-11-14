@@ -293,3 +293,60 @@ async fn path_rules_quota_and_validation() {
     let weird = put(&app, &c, "../x", 0, None, "y", "").await;
     assert_eq!(weird.json["error"], "invalid_client_id");
 }
+
+#[tokio::test]
+async fn takeover_moves_the_lease_and_fences_out_the_previous_editor() {
+    let Some(app) = app().await else { return };
+    let c = user(&app, "takeover@example.com").await;
+    put(&app, &c, "laptop", 0, None, "공유", "v1").await;
+    let first = lease(&app, &c, "laptop", "노트북").await;
+    // 휴대폰이 강제로 편집 권한을 가져옴 (2026-11-14 사용자 승인)
+    let taken = app
+        .call(
+            Method::POST,
+            &format!("/api/v1/notes/{NOTE}/lease"),
+            Some(json!({ "clientId": "phone", "label": "휴대폰", "takeover": true })),
+            Auth::Cookie(&c),
+        )
+        .await;
+    assert_eq!(taken.status, StatusCode::OK, "{}", taken.json);
+    assert!(
+        token(&taken).unwrap() > token(&first).unwrap(),
+        "새 fencing token"
+    );
+    // 노트북의 저장은 거절(덮어쓰지 않음) → 노트북은 '휴대폰에서 편집 중'
+    let late = put(
+        &app,
+        &c,
+        "laptop",
+        1,
+        token(&first),
+        "공유",
+        "노트북 늦은 저장",
+    )
+    .await;
+    assert_eq!(late.status, StatusCode::LOCKED);
+    assert_eq!(late.json["error"], "lease_held");
+    assert!(late.json["message"].as_str().unwrap().contains("휴대폰"));
+    // 휴대폰은 새 token으로 저장
+    let saved = put(
+        &app,
+        &c,
+        "phone",
+        1,
+        token(&taken),
+        "공유",
+        "휴대폰에서 고침",
+    )
+    .await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.json);
+    // takeover 없이 다시 요청하면 지금처럼 거절, 같은 보유자의 갱신은 token 유지
+    assert_eq!(
+        lease(&app, &c, "laptop", "노트북").await.json["error"],
+        "lease_held"
+    );
+    assert_eq!(
+        token(&lease(&app, &c, "phone", "휴대폰").await),
+        token(&taken)
+    );
+}
