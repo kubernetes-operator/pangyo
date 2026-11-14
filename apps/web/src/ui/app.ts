@@ -15,7 +15,7 @@ import { parseFolder, folderAncestors, safeFilename, FolderError } from '../doma
 import { askConfirm, askMove, askName, type MoveTarget } from './name-dialog';
 import { depthOf, folderMoveProblem, isWithin, joinPath, lastSegment, parentOf, remap } from '../domain/tree-ops';
 import { HELP_MARKDOWN, HELP_TITLE, isPristineWelcome, WELCOME_NOTE_ID } from './help';
-import { buildLabel, pickUpdate, type UpdateState } from './app-update';
+import { buildLabel, pickUpdate, updateExitCode, type UpdateState } from './app-update';
 import {
   CURRENT_PROJECT_META_KEY,
   DEFAULT_PROJECT,
@@ -992,6 +992,14 @@ async function setupDevice(): Promise<void> {
   // Android: 상태바 높이만큼 화면을 내림 (웹뷰가 safe-area를 알려 주지 않는 경우 대비)
   void tauri.appApi.topInset().then((px) => {
     if (px > 0) document.documentElement.style.setProperty('--inset-top', `${Math.round(px)}px`);
+  });
+  // 지난 Windows 업데이트 결과: 실패했으면 이유를 알림 (2026-11-14: 재시작은 됐지만 업데이트가 안 된 경우 확인용)
+  void tauri.appApi.lastUpdateResult().then((log) => {
+    const code = updateExitCode(log);
+    if (code === null) return;
+    const w = WORDS[state.locale];
+    $('project-status').textContent =
+      code === 0 ? w.updateDone : w.updateFailedCode.replace('{code}', String(code));
   });
   // 하단 내비게이션 막대 높이 (키보드가 내려갔을 때 아래 메뉴가 가려지지 않게, 2026-11-14 사용 의견).
   // 시작 직후에는 창 여백을 못 읽을 수 있어 몇 번 더 물음. 그래도 0이면, 앱 화면이 화면 끝까지 그려질 때만 기본 높이 사용

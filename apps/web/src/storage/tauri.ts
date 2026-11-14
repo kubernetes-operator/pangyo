@@ -29,6 +29,7 @@ export const COMMANDS = {
   saveDownload: 'save_download',
   installUpdate: 'install_update',
   topInset: 'top_inset',
+  lastUpdateResult: 'last_update_result',
   bottomInset: 'bottom_inset',
   devicePair: 'device_pair',
   deviceUnpair: 'device_unpair',
@@ -78,6 +79,8 @@ export const appApi = {
   openDownload: (url: string) => invoke<void>(COMMANDS.openDownload, { url }),
   /** 내보낸 파일(프로젝트 .zip)을 OS 다운로드 폴더에 저장 → 저장한 경로 */
   saveDownload: (fileName: string, data: number[]) => invoke<string>(COMMANDS.saveDownload, { fileName, data }),
+  /** 지난 Windows 업데이트 기록 (한 번 읽으면 지움) */
+  lastUpdateResult: () => invoke<string | null>(COMMANDS.lastUpdateResult).catch(() => null),
   /** 화면 위쪽 여백 (Android 상태바 높이, CSS px) */
   topInset: () => invoke<number>(COMMANDS.topInset).catch(() => 0),
   /** 화면 아래쪽 여백 (Android 내비게이션 막대 높이, CSS px) */

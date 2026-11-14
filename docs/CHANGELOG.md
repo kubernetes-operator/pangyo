@@ -322,3 +322,9 @@
 - **Android 하단 버튼이 내비게이션 막대(메뉴·홈·뒤로)에 가림**: 창 여백(WindowInsets)이 0으로 와서 여백이 없었음 → 시작 뒤 몇 번 다시 묻고, 그래도 0이면 앱 화면이 화면 끝까지 그려질 때만 시스템 기본 내비게이션 막대 높이를 씀.
 - 테스트: 서버 통합 1개(takeover·이전 보유자 거절·token), Vitest 107(가져오기·빼앗긴 쪽 충돌 보관·최신 받기), Playwright 34(두 브라우저 여기서 편집하기), `make check`, `make desktop-sync-check`.
 
+## Unreleased — Windows 앱 안 업데이트 수정 2 (2026-11-14, `fix/windows-update`)
+- 확인 내역: 여기서 편집하기 정상, 키보드 위 버튼 정상. **Windows는 재시작은 되지만 업데이트가 안 됨**.
+- 원인(추정): Windows 설치 파일이 두 가지 — `.msi`는 `C:\Program Files\MemoNest`, `.exe`(NSIS, currentUser)는 `%LOCALAPPDATA%\MemoNest`에 설치됨. 앱은 항상 `.exe`로 업데이트해서, msi로 설치한 앱이면 새 버전이 **다른 폴더에 따로** 설치되고 다시 열린 것은 예전 앱.
+- 수정: 앱이 자기 설치 위치로 방식을 판단(`install_kind`)해 **같은 방식의 파일**로 업데이트(msi: `msiexec /i … /passive` — 관리자 확인 창 1회, exe: `/S`). 한 줄 명령 대신 임시 **배치 파일**(UTF-8, 한글 사용자 폴더 대비)로 실행해 설치가 끝날 때까지 확실히 기다린 뒤 다시 실행. 설치 종료 코드를 기록해 다음 실행 때 결과(성공/실패 코드)를 화면에 표시(`last_update_result`). 장비 연결 창의 앱 버전에 설치 방식(.msi/.exe) 표시.
+- 테스트: Tauri 단위 3개(설치 방식 판단·배치 내용·UTF-8), Vitest 109(파일 선택·종료 코드), `make check`. 실제 Windows 설치는 실기기 확인 필요.
+

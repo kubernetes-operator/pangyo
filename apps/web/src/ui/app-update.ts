@@ -10,6 +10,8 @@ export interface AppInfo {
   build: string | null;
   /** Rust std::env::consts::OS: android, windows, macos, linux, ios */
   platform: string;
+  /** Windows 설치 방식: msi(Program Files) / nsis(사용자 폴더 .exe). 같은 방식의 파일로 업데이트 */
+  installKind?: 'msi' | 'nsis' | null;
 }
 
 /** 이 기기에서 받을 설치 파일 (scripts/publish-downloads.sh의 id) */
@@ -35,11 +37,24 @@ export interface UpdateState {
   publishedBuild: string | null;
 }
 
+/** 이 앱을 업데이트할 설치 파일 id. Windows는 설치 방식과 같은 파일 (msi로 설치한 앱을 .exe로 올리면 다른 폴더에 따로 설치됨) */
+export function updateFileId(info: AppInfo): string | undefined {
+  if (info.platform === 'windows' && info.installKind === 'msi') return 'windows-msi';
+  return UPDATE_FILE_ID[info.platform];
+}
+
 export function pickUpdate(info: AppInfo, list: { build?: string; files: DownloadFile[] }): UpdateState {
-  const id = UPDATE_FILE_ID[info.platform];
+  const id = updateFileId(info);
   const file = list.files.find((f) => f.id === id) ?? null;
   const fresh = isNewBuild(info.build, list.build);
   return { info, file: fresh ? file : null, publishedBuild: list.build ?? null };
 }
 
-export const buildLabel = (info: AppInfo) => `${info.version}${info.build ? ` (${short(info.build)})` : ''}`;
+export const buildLabel = (info: AppInfo) =>
+  `${info.version}${info.build ? ` (${short(info.build)})` : ''}${info.installKind ? ` · ${info.installKind === 'msi' ? '.msi' : '.exe'}` : ''}`;
+
+/** 지난 Windows 업데이트 기록 "exit=0 kind=msi" → 실패면 종료 코드, 성공이면 0, 알 수 없으면 null */
+export function updateExitCode(log: string | null | undefined): number | null {
+  const m = /exit=(-?\d+)/.exec(log ?? '');
+  return m ? Number(m[1]) : null;
+}
