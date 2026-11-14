@@ -29,6 +29,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     pairStep2: '앱에서 "계정 → 장비 연결"을 엽니다.',
     pairStep3: '화면에 나온 서버 주소와 코드(10분, 한 번만)를 입력하고 "연결"을 누릅니다.',
     forget: '기록 지우기',
+    reconnect: '다시 연결 코드',
+    reconnectFor: '"{name}" 장비 다시 연결: 앱의 장비 연결에 아래 서버 주소와 코드를 입력하면 이 장비 기록으로 연결됩니다.',
     copy: '복사',
     copied: '복사됨',
     pairCode: '등록 코드',
@@ -86,6 +88,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     pairStep2: 'In the app, open "Account → Device link".',
     pairStep3: 'Enter the server address and code shown here (10 minutes, single use) and press "Link".',
     forget: 'Remove',
+    reconnect: 'Reconnect code',
+    reconnectFor: 'Reconnect "{name}": enter the server address and code below in the app; it links back to this device record.',
     copy: 'Copy',
     copied: 'Copied',
     pairCode: 'Pairing code',
@@ -145,6 +149,8 @@ export interface AccountHooks {
 
 export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => Locale, hooks: AccountHooks = {}) {
   let mode: Mode = 'login';
+  /** 장비 목록의 '다시 연결 코드' → 그 장비 전용 등록 코드 표시 (renderAccount가 연결) */
+  let reconnectDevice: (device: { id: string; name: string }) => void = () => undefined;
   const t = (key: string) => TEXT[getLocale()][key] ?? key;
   const body = () => dialog.querySelector<HTMLElement>('#account-body')!;
 
@@ -280,10 +286,12 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       mode = 'login';
       await render();
     };
-    const pair = el('button', { type: 'button', id: 'pairing-start' }, t('pair'));
-    pair.onclick = async () => {
+    const pairHint = el('p', { className: 'muted', id: 'pairing-for' });
+    /** 새 장비 또는 고른 장비(다시 연결)의 등록 코드 */
+    const showCode = async (device?: { id: string; name: string }) => {
+      pairHint.textContent = device ? t('reconnectFor').replace('{name}', device.name) : '';
       try {
-        const p = await accountApi.pairingStart();
+        const p = await accountApi.pairingStart(device?.id);
         codeBox.textContent = `${p.code} · ~${new Date(p.expiresAt).toLocaleTimeString()}`;
         serverBox.replaceChildren(
           copyable(t('serverAddress'), location.origin, 'pairing-server-url'),
@@ -292,7 +300,11 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
       } catch (e) {
         codeBox.textContent = e instanceof ApiError ? e.message : t('unavailable');
       }
+      codeBox.scrollIntoView({ block: 'nearest' });
     };
+    reconnectDevice = (device) => void showCode(device);
+    const pair = el('button', { type: 'button', id: 'pairing-start' }, t('pair'));
+    pair.onclick = () => void showCode();
     body().replaceChildren(
       el('p', { className: 'account-who', id: 'account-email' }, account.displayName ? `${account.displayName} · ` : '', account.email ?? ''),
       el(
@@ -310,6 +322,7 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
         el('ol', {}, el('li', {}, t('pairStep1')), el('li', {}, t('pairStep2')), el('li', {}, t('pairStep3'))),
       ),
       el('div', { className: 'toolbar' }, pair, logout),
+      pairHint,
       codeBox,
       serverBox,
       el('h3', {}, t('devices')),
@@ -499,11 +512,13 @@ export function createAccountPanel(dialog: HTMLDialogElement, getLocale: () => L
           await (d.revokedAt ? accountApi.forgetDevice(d.id) : accountApi.revokeDevice(d.id)).catch(() => undefined);
           await renderDevices(list);
         };
+        const again = el('button', { type: 'button', className: 'reconnect' }, t('reconnect'));
+        again.onclick = () => reconnectDevice({ id: d.id, name: d.name });
         return el(
           'li',
           { dataset: { deviceId: d.id } },
           el('span', {}, `${d.name} (${d.platform})`, ...(d.revokedAt ? [el('small', { className: 'muted' }, ` · ${t('revoked')}`)] : [])),
-          action,
+          el('span', { className: 'device-actions' }, again, action),
         );
       }),
     );

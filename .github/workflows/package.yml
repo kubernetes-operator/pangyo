@@ -118,6 +118,14 @@ jobs:
             ~/.gradle/wrapper
             ~/.gradle/caches
           key: gradle-${{ runner.os }}-${{ hashFiles('apps/native/src-tauri/tauri.conf.json') }}
+      # 디버그 서명 키 유지: Gradle이 처음 만든 ~/.android/debug.keystore를 캐시에 두고 다음 빌드에서 그대로 씀.
+      # 빌드마다 키가 바뀌면 Android가 기존 앱 위에 업데이트 설치를 거부함(지우고 다시 설치 → 메모·장비 연결 사라짐).
+      # 새 키를 만들지 않고 빌드 도구가 만든 디버그 키를 보관만 함. 7일 넘게 빌드가 없으면 캐시가 지워져 키가 바뀔 수 있음.
+      - name: 디버그 서명 키 유지 (앱 위에 업데이트 설치 가능하게)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
       - run: npm ci --no-audit --no-fund
       - name: Android 프로젝트 생성 + 디버그 APK 빌드 (arm64)
         run: |

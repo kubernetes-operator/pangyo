@@ -12,4 +12,6 @@ license = "UNLICENSED"     # 라이선스 미정: 공개 전 결정 필요
 rust-version = "1.85"      # 최소 지원 Rust 버전(MSRV)
 
 [workspace.lints.rust]
-unsafe_code = "forbid"     # 메모 앱에 unsafe가 필요할 이유가 없음
+# unsafe는 금지(오류). 예외는 Android JNI 진입점 한 곳뿐(apps/native/src-tauri/src/platform.rs `with_env`,
+# JVM이 넘겨준 포인터를 감싸야 함). forbid는 예외를 둘 수 없어 deny로 둠 (2026-11-13)
+unsafe_code = "deny"
