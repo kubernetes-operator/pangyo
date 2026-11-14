@@ -114,3 +114,8 @@ body.note-locked #editor,body.note-locked #title{background:#f7f7f7;color:var(--
 .bottom-text{align-items:center}
 .trash-btn{font-size:12px;padding:4px 9px}
 .device-actions{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+/* 모바일 상태바·제스처 막대와 겹치지 않게 (사용 의견 5차): 웹은 safe-area, 앱은 상태바 높이(--inset-top) */
+.shell{padding-top:max(env(safe-area-inset-top,0px),var(--inset-top,0px));padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
+/* 좁은 세로 화면: 상단은 아이콘, 연결 상태 글자는 숨김(정리 영역의 네트워크 표시로) — 사용 의견 5차 */
+@media(max-width:760px){#connectivity{display:none}.topbar strong small{display:none}.topbar strong{font-size:13px}.doc-actions{flex-wrap:nowrap;overflow-x:auto}}
+.more-actions .more-panel select,.more-actions .more-panel button{width:100%}

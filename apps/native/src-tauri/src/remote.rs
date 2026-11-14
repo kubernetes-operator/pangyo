@@ -250,6 +250,14 @@ fn with_headers<B>(
 /// 서버 주소 정리: https만 (개발용 localhost/127.0.0.1은 http 허용), 경로·쿼리 없이 끝의 `/` 제거
 pub fn normalize_server_url(raw: &str) -> RemoteResult<String> {
     let url = raw.trim().trim_end_matches('/');
+    // https:// 를 빼고 입력해도 됨 (2026-11-14 사용 의견) → 붙여서 사용
+    let with_scheme;
+    let url = if raw.contains("://") {
+        url
+    } else {
+        with_scheme = format!("https://{url}");
+        with_scheme.as_str()
+    };
     let lower = url.to_ascii_lowercase();
     let rest = if let Some(r) = lower.strip_prefix("https://") {
         r
@@ -370,6 +378,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn server_url_without_scheme_gets_https() {
+        assert_eq!(
+            normalize_server_url(" notes.example.com/ ").unwrap(),
+            "https://notes.example.com"
+        );
+        assert!(normalize_server_url("ftp://notes.example.com").is_err());
+    }
+
+    #[test]
     fn server_url_rules() {
         assert_eq!(
             normalize_server_url(" https://notes.example.com/ ").unwrap(),
@@ -389,8 +406,8 @@ mod tests {
         );
         for bad in [
             "http://notes.example.com",
-            "notes.example.com",
             "https://",
+            "a.com/path", // https:// 를 붙여도 경로가 있으면 거절
             "https://a.com/path",
             "https://user@a.com",
             "ftp://a.com",

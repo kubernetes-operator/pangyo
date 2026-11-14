@@ -3,7 +3,7 @@ import { SETTINGS, WORDS, PLACEHOLDERS, type Locale } from '../settings';
 import type { NoteRepository } from '../storage/repository';
 import { isTauri } from '../storage';
 import { createAccountPanel } from '../account/panel';
-import { accountApi, ApiError, downloadApi, searchApi, ServerUnavailable, setTransport, trashApi } from '../account/api';
+import { accountApi, ApiError, downloadApi, formatBytes, searchApi, ServerUnavailable, setTransport, trashApi } from '../account/api';
 import { daysLeft, expiresAtOf, LOCAL_TRASH_META_KEY, pruneTrash, restoredName, TRASH_DAYS, type LocalTrashItem } from '../domain/trash';
 import { createZip, type ZipEntry } from '../domain/zip';
 import type { DeletionChoice } from '../account/device-panel';
@@ -127,9 +127,32 @@ function updateConnectivity(): void {
   // 배터리는 Battery Status API가 있는 브라우저(Chrome, Android)에서만 표시
   const w = WORDS[state.locale];
   $('wifi').textContent = `${w.net}: ${navigator.onLine ? w.online : w.offline}`;
-  $('bluetooth').textContent = `${w.bluetooth}: --`;
+  renderStorageUse();
   if (battery.level === null) $('battery').textContent = `${w.battery}: --`;
   else $('battery').textContent = `${w.battery}: ${Math.round(battery.level * 100)}%${battery.charging ? ' ⚡' : ''}`;
+}
+
+// 용량 표시 (2026-11-14 사용 의견: 블루투스 대신): 로그인하면 계정 사용량/한도, 아니면 이 기기 메모 크기
+const storageUse = { used: null as number | null, quota: null as number | null };
+function renderStorageUse(): void {
+  const w = WORDS[state.locale];
+  const node = document.getElementById('storage-use');
+  if (!node) return;
+  if (state.sync && storageUse.used !== null && storageUse.quota) {
+    node.textContent = `${w.storage}: ${formatBytes(storageUse.used)} / ${formatBytes(storageUse.quota)}`;
+  } else {
+    const bytes = state.notes.reduce((n, x) => n + new TextEncoder().encode(x.content).length, 0);
+    node.textContent = `${w.storage}: ${formatBytes(bytes)} (${w.thisDevice})`;
+  }
+}
+async function refreshStorageUse(): Promise<void> {
+  try {
+    const a = await accountApi.me();
+    if (a) Object.assign(storageUse, { used: a.usedBytes, quota: a.quotaBytes });
+  } catch {
+    /* 오프라인: 마지막 값 유지 */
+  }
+  renderStorageUse();
 }
 
 const battery = { level: null as number | null, charging: false };
@@ -162,11 +185,61 @@ function changeMode(mode: Mode): void {
   renderModeButtons();
 }
 
-/** 상단 버튼 문구: F6이 지금 무엇을 할지 그대로 보여 줌 (2026-11-13 사용 의견: '집중 모드'·'2패널'이 어려움) */
+/** 상단 버튼 문구: F6이 지금 무엇을 할지 그대로 보여 줌 (2026-11-13 사용 의견: '집중 모드'·'2패널'이 어려움).
+ *  좁은 세로 화면(모바일)에서는 아이콘만, 전체 이름은 title·aria-label로 (2026-11-14 사용 의견: 메뉴 글자가 넘침) */
 function renderModeButtons(): void {
   const w = WORDS[state.locale];
-  $('toggle-btn').textContent = state.mode === 'editor' ? w.showList : w.showEditor;
+  const small = isSmallScreen();
+  const label = (id: string, full: string, icon: string) => {
+    const b = $(id);
+    b.textContent = small ? icon : full;
+    b.title = full;
+    b.setAttribute('aria-label', full);
+  };
+  label('toggle-btn', state.mode === 'editor' ? w.showList : w.showEditor, state.mode === 'editor' ? '☰' : '✎');
+  label('split-btn', w.split, '⇆');
+  label('language-btn', w.language, '🌐');
+  label('help-btn', w.help, '?');
+  label('account-btn', w.account, '👤');
+  label('update-btn', w.updateAvailable, '⬆');
+  label('undo-btn', w.undo, '↶');
+  label('redo-btn', w.redo, '↷');
+  label('jump-top', w.jumpTop, '⤒');
+  label('jump-last', w.jumpLast, '✎');
   $('split-btn').hidden = state.mode === 'split';
+  $('timer').title = w.timerHint;
+}
+
+// === 긴 메모: 맨 위 / 마지막으로 쓴 위치 (2026-11-14 사용 의견) — 위치는 이 기기에만 기억 ===
+const CARET_KEY = (id: string) => `memonest.lastEdit.${id}`;
+function rememberCaret(): void {
+  const note = state.note;
+  if (!note) return;
+  try {
+    localStorage.setItem(CARET_KEY(note.id), String(editor().selectionStart));
+  } catch {
+    /* 무시 */
+  }
+}
+function jumpTo(position: number): void {
+  const box = editor();
+  const pos = Math.max(0, Math.min(position, box.value.length));
+  box.blur();
+  box.setSelectionRange(pos, pos);
+  box.focus(); // 포커스를 줄 때 브라우저가 커서 위치로 스크롤
+  if (pos === 0) box.scrollTop = 0;
+}
+function jumpToLastEdit(): void {
+  const note = state.note;
+  if (!note) return;
+  let pos = note.content.length;
+  try {
+    const saved = localStorage.getItem(CARET_KEY(note.id));
+    if (saved !== null) pos = Number(saved);
+  } catch {
+    /* 기록 없음: 끝으로 */
+  }
+  jumpTo(pos);
 }
 
 /** 화면 설정이라 기기(브라우저)마다: localStorage (E2E는 미리 설정해 건너뜀) */
@@ -526,6 +599,7 @@ function syncTick(): Promise<void> {
     }
     await engine.syncOnce();
     if (isTauri()) await refreshDeletions();
+    await refreshStorageUse();
   })()
     .catch(console.error)
     .finally(() => {
@@ -783,6 +857,10 @@ async function installAppUpdate(): Promise<void> {
 
 async function setupDevice(): Promise<void> {
   const tauri = await import('../storage/tauri');
+  // Android: 상태바 높이만큼 화면을 내림 (웹뷰가 safe-area를 알려 주지 않는 경우 대비)
+  void tauri.appApi.topInset().then((px) => {
+    if (px > 0) document.documentElement.style.setProperty('--inset-top', `${Math.round(px)}px`);
+  });
   const { createDevicePanel } = await import('../account/device-panel');
   setTransport(tauri.deviceTransport(onDeviceUnauthorized));
   device.api = tauri.deviceApi;
@@ -1976,7 +2054,13 @@ function bindEvents(): void {
   });
   $<HTMLInputElement>('title').oninput = (e) =>
     applyEdit('title', safeFilename((e.target as HTMLInputElement).value));
-  editor().oninput = (e) => applyEdit('content', (e.target as HTMLTextAreaElement).value);
+  editor().oninput = (e) => {
+    applyEdit('content', (e.target as HTMLTextAreaElement).value);
+    rememberCaret();
+  };
+  $('jump-top').onclick = () => jumpTo(0);
+  $('jump-last').onclick = jumpToLastEdit;
+  window.matchMedia(SETTINGS.smallScreenQuery).addEventListener('change', renderModeButtons);
   $<HTMLSelectElement>('format').onchange = (e) => {
     const note = state.note;
     if (!note) return;

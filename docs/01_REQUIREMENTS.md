@@ -12,7 +12,7 @@
 | 06 | BSD 셸/Wi-Fi/BT | `config/device.freebsd.example.toml` | P |
 | 07 | BSD 단일 목적 키오스크 | `apps/bsd/kiosk` | D (VM 검증, 실기기 전) |
 | 08 | 관리/작성 2화면 | `apps/web`, `docs/03_UX.md` | D |
-| 09 | 트리/시간/배터리/Wi-Fi/BT 상태 | `apps/web`, `docs/03_UX.md` | S |
+| 09 | 트리/시간/배터리/Wi-Fi/BT 상태 (2026-11-14 사용자: BT는 어느 기기에서도 표시되지 않아 **용량 표시로 대체**) | `apps/web`, `docs/03_UX.md` | S |
 | 10 | 메모 전용 화면 | `apps/web` | D |
 | 11 | 한 화면일 때 회전 전환 | `apps/web` | D |
 | 12 | 기본 MD, 선택 TXT | `apps/web` | D |

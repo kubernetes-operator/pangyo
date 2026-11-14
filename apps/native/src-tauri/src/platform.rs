@@ -73,6 +73,18 @@ fn raw_device_id() -> Option<String> {
     None
 }
 
+/// 화면 위쪽에서 비워 둘 높이(CSS px). Android 상태바, 다른 OS는 0
+pub fn top_inset() -> f64 {
+    #[cfg(target_os = "android")]
+    {
+        android::status_bar_height().unwrap_or(24.0)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        0.0
+    }
+}
+
 /// 사람이 알아볼 기기 이름 (장비 등록 기본값)
 pub fn device_name() -> Option<String> {
     #[cfg(target_os = "android")]
@@ -149,6 +161,53 @@ pub mod android {
                 )?
                 .l()?;
             Ok(to_string(env, value))
+        })
+        .ok()
+        .flatten()
+    }
+
+    /// 상단 상태바 높이(CSS px = dp). 앱 화면이 상태바 밑까지 그려질 때 내려야 할 만큼 (2026-11-14 사용 의견)
+    pub fn status_bar_height() -> Option<f64> {
+        with_env(|env, context| {
+            let res = env
+                .call_method(
+                    context,
+                    "getResources",
+                    "()Landroid/content/res/Resources;",
+                    &[],
+                )?
+                .l()?;
+            let name = env.new_string("status_bar_height")?;
+            let kind = env.new_string("dimen")?;
+            let pkg = env.new_string("android")?;
+            let id = env
+                .call_method(
+                    &res,
+                    "getIdentifier",
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                    &[
+                        JValue::Object(&name),
+                        JValue::Object(&kind),
+                        JValue::Object(&pkg),
+                    ],
+                )?
+                .i()?;
+            if id == 0 {
+                return Ok(None);
+            }
+            let px = env
+                .call_method(&res, "getDimensionPixelSize", "(I)I", &[JValue::Int(id)])?
+                .i()?;
+            let metrics = env
+                .call_method(
+                    &res,
+                    "getDisplayMetrics",
+                    "()Landroid/util/DisplayMetrics;",
+                    &[],
+                )?
+                .l()?;
+            let density = env.get_field(&metrics, "density", "F")?.f()?;
+            Ok((density > 0.0).then(|| f64::from(px) / f64::from(density)))
         })
         .ok()
         .flatten()

@@ -223,10 +223,12 @@ test('사용 의견(2026-11-13 2차): 새 메모 기본 제목은 일시 Memo, �
   await expect(selected).toHaveText(['▸ 보관', '· 옮길 메모.md']);
 
   // 삭제: 취소하면 그대로, 확인하면 지워짐 (새로고침 후에도)
+  await openMore(page);
   await page.locator('#delete-note').click();
   await expect(page.locator('#confirm-cancel')).toBeFocused();
   await page.locator('#confirm-cancel').click();
   await expect(page.locator('#tree')).toContainText('옮길 메모');
+  await openMore(page);
   await page.locator('#delete-note').click();
   await page.locator('#confirm-ok').click();
   await expect(page.locator('#tree')).not.toContainText('옮길 메모');
@@ -344,6 +346,7 @@ test('사용 의견 3차: 휴지통(이 기기) 되살리기, 프로젝트 전�
 
   // 메모 삭제 → 휴지통(이 기기) → 되살리기
   await page.locator('#tree button', { hasText: '일정' }).click();
+  await openMore(page);
   await page.locator('#delete-note').click();
   await page.locator('#confirm-ok').click();
   await expect(page.locator('#tree')).not.toContainText('일정');
@@ -378,8 +381,10 @@ test('T-03 MD/TXT 다운로드 내용이 UTF-8로 동일', async ({ page }) => {
   await page.locator('#editor').fill(body);
 
   for (const format of ['md', 'txt'] as const) {
+    await openMore(page);
     await page.locator('#format').selectOption(format);
     const download = page.waitForEvent('download');
+    await openMore(page);
     await page.locator('#export-btn').click();
     const file = await download;
     expect(file.suggestedFilename()).toBe(`내보내기.${format}`);
