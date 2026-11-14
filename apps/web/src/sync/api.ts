@@ -37,8 +37,10 @@ export const syncApi: SyncApi = {
   deleteProject: (id) => call(() => request<ServerProject>('DELETE', `/projects/${encodeURIComponent(id)}`)),
   get: (id) => call(() => request<ServerNote>('GET', notePath(id))),
   put: (id, body) => call(() => request<ServerNote>('PUT', notePath(id), body)),
-  acquireLease: (id, clientId, label) =>
-    call(() => request<LeaseGrant>('POST', `${notePath(id)}/lease`, { clientId, label })),
+  acquireLease: (id, clientId, label, takeover) =>
+    call(() =>
+      request<LeaseGrant>('POST', `${notePath(id)}/lease`, { clientId, label, ...(takeover ? { takeover: true } : {}) }),
+    ),
   releaseLease: (id, clientId, keepalive) =>
     call(() =>
       request<void>('DELETE', `${notePath(id)}/lease?clientId=${encodeURIComponent(clientId)}`, undefined, {

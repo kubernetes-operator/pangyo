@@ -300,9 +300,19 @@ fn top_inset() -> f64 {
 }
 
 /// 화면 아래쪽 여백(내비게이션 막대 높이, CSS px). 키보드가 내려갔을 때 아래 메뉴가 가려지지 않게
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BottomInset {
+    /// 실제 창 여백(WindowInsets). 못 읽으면 0
+    insets: f64,
+    /// 시스템 기본 내비게이션 막대 높이
+    nav_bar: f64,
+}
+
 #[tauri::command]
-fn bottom_inset() -> f64 {
-    platform::bottom_inset()
+fn bottom_inset() -> BottomInset {
+    let (insets, nav_bar) = platform::bottom_inset();
+    BottomInset { insets, nav_bar }
 }
 
 /// Android는 설정의 '기기 이름'(없으면 제조사·모델), 데스크톱은 호스트 이름 (2026-11-13 사용자 확인: Android에서 비어 있었음)

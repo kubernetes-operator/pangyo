@@ -14,7 +14,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     error: '동기화 오류',
     locked: '{who}에서 편집 중이라 읽기 전용입니다',
     lockedUntil: '(~{time}, 편집이 끝나면 자동 해제)',
-    retry: '다시 시도',
+    retry: '최신 내용 받기',
+    takeover: '여기서 편집하기',
     conflict: '다른 기기에서 바뀐 내용과 충돌합니다. 어느 쪽도 지우지 않았습니다 — 선택하세요.',
     conflictDeleted: '다른 기기에서 이 메모를 삭제했습니다. 내 내용은 그대로 있습니다 — 선택하세요.',
     serverVersion: '서버 버전 보기',
@@ -38,7 +39,8 @@ const TEXT: Record<Locale, Record<string, string>> = {
     error: 'Sync error',
     locked: 'Read-only: being edited on {who}',
     lockedUntil: '(until ~{time}, released automatically)',
-    retry: 'Retry',
+    retry: 'Get latest',
+    takeover: 'Edit here',
     conflict: 'This note changed on another device too. Nothing was overwritten — choose:',
     conflictDeleted: 'This note was deleted on another device. Your text is kept — choose:',
     serverVersion: 'Show server version',
@@ -97,7 +99,10 @@ export function renderSyncBanner(
     lease: LeaseState | null;
     status: SyncStatus | null;
     locale: Locale;
+    /** 최신 내용 받기 (+ 편집 가능해졌으면 바로 편집) */
     onRetry: () => void;
+    /** 편집 권한을 이 기기로 가져오기 */
+    onTakeover?: () => void;
     onResolve: (choice: ConflictChoice) => void;
   },
 ): void {
@@ -135,7 +140,10 @@ export function renderSyncBanner(
     const until = lease.expiresAt ? new Date(lease.expiresAt).toLocaleTimeString() : '';
     banner.append(
       text(`${fill(t.locked, { who: lease.holderLabel || '?' })} ${until ? fill(t.lockedUntil, { time: until }) : ''}`),
-      button(t.retry, 'lease-retry', args.onRetry),
+      ...[
+        button(t.retry, 'lease-retry', args.onRetry),
+        ...(args.onTakeover ? [button(t.takeover, 'lease-takeover', args.onTakeover)] : []),
+      ],
     );
   } else if (note?.sync?.error) {
     banner.classList.add('error');

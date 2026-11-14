@@ -137,6 +137,10 @@ pub struct LeaseRequest {
     client_id: String,
     #[serde(default)]
     label: String,
+    /// 다른 기기가 편집 중이어도 편집 권한을 가져옴 (2026-11-14 사용자 승인, ADR-0003 보완).
+    /// 새 fencing token을 발급하므로 이전 보유자의 저장은 423으로 거절되고, 그 기기의 올리지 못한 내용은 충돌 검토로 보관됨
+    #[serde(default)]
+    takeover: bool,
 }
 
 #[derive(Deserialize)]
@@ -559,8 +563,19 @@ pub async fn acquire_lease(
     .fetch_optional(&mut *tx)
     .await?;
     let token = match lease {
-        Some((holder, label, _, expires_at, true)) if holder != me => {
+        Some((holder, label, _, expires_at, true)) if holder != me && !req.takeover => {
             return Err(lease_held(&label, expires_at))
+        }
+        // 강제 가져오기: 다른 보유자의 유효한 임대를 새 token으로 교체 (같은 보유자의 갱신은 아래에서 token 유지)
+        Some((holder, label, _, _, true)) if holder != me => {
+            tracing::info!(note = %id, from = %label, to = %req.label.trim(), "lease taken over");
+            let (epoch,): (i64,) = sqlx::query_as(
+                "UPDATE notes SET lease_epoch = lease_epoch + 1 WHERE id = $1 RETURNING lease_epoch",
+            )
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+            epoch
         }
         // 같은 보유자의 유효한 임대 → 갱신 (token 유지)
         Some((_, _, token, _, true)) => token,
