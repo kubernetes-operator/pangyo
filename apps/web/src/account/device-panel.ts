@@ -41,6 +41,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     outcome_notSynced: '동기화가 켜져 있지 않습니다. 먼저 장비를 연결하세요.',
     appVersion: '앱 버전',
     checkUpdate: '업데이트 확인',
+    installUpdate: '지금 업데이트',
   },
   en: {
     title: 'Device link',
@@ -76,6 +77,7 @@ const TEXT: Record<Locale, Record<string, string>> = {
     outcome_notSynced: 'Sync is off. Link this device first.',
     appVersion: 'App version',
     checkUpdate: 'Check for updates',
+    installUpdate: 'Update now',
   },
 };
 
@@ -96,6 +98,10 @@ export interface DeviceHooks {
   appVersion?: () => Promise<string>;
   /** 업데이트 확인 → 결과 문구 (새 버전이면 상단 '새 버전 있음' 버튼도 켬) */
   checkUpdate?: () => Promise<string>;
+  /** 새 버전이 있는지 (확인 후) */
+  updateAvailable?: () => boolean;
+  /** 새 버전 설치 (상단 ⬆ 버튼과 같음) */
+  installUpdate?: () => Promise<void>;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -232,12 +238,21 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
     void hooks.appVersion?.().then((v) => (version.textContent = v));
     const updateResult = el('small', { role: 'status', id: 'update-result' });
     const updateBtn = el('button', { type: 'button', id: 'check-update' }, t('checkUpdate'));
+    // 새 버전이 있으면 이 창에서도 바로 설치 (2026-11-14 사용 의견: 버튼이 메인 화면에만 있었음)
+    const installBtn = el('button', { type: 'button', id: 'install-update', className: 'primary', hidden: true }, t('installUpdate'));
+    installBtn.onclick = async () => {
+      dialog.close();
+      await hooks.installUpdate?.();
+    };
+    const showInstall = () => (installBtn.hidden = !hooks.updateAvailable?.());
     updateBtn.onclick = async () => {
       updateBtn.disabled = true;
       updateResult.textContent = '…';
       updateResult.textContent = (await hooks.checkUpdate?.().catch((e: unknown) => String(e))) ?? '';
       updateBtn.disabled = false;
+      showInstall();
     };
+    showInstall();
     frame(
       ...(hooks.revoked() ? [message(t('revoked'), 'error')] : []),
       el(
@@ -252,7 +267,7 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
         el('dt', {}, t('appVersion')),
         version,
       ),
-      ...(hooks.checkUpdate ? [el('div', { className: 'toolbar' }, updateBtn, updateResult)] : []),
+      ...(hooks.checkUpdate ? [el('div', { className: 'toolbar' }, updateBtn, installBtn, updateResult)] : []),
       message(hooks.statusText()),
       el('h3', {}, t('deletions')),
       message(t('deletionsHelp')),

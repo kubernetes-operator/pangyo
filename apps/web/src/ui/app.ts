@@ -206,13 +206,29 @@ function renderModeButtons(): void {
   label('redo-btn', w.redo, '↷');
   label('jump-top', w.jumpTop, '⤒');
   label('jump-last', w.jumpLast, '✎');
-  $('split-btn').hidden = state.mode === 'split';
+  // 좁은 화면은 목록·메모가 함께 보이지 않으므로 전환 버튼 하나만 (2026-11-14 사용 의견)
+  $('split-btn').hidden = small || state.mode === 'split';
   $('timer').title = w.timerHint;
 }
 
 // === 더보기 메뉴 (2026-11-14 사용 의견: 밖을 눌러도 계속 떠 있음, 세로 화면에서 메모 창에 가려짐) ===
 function closeMore(): void {
   $<HTMLDetailsElement>('more-actions').open = false;
+}
+
+/** 창 밖(어두운 배경)을 누르면 닫기 (2026-11-14 사용 의견: 장비 연결 창을 닫기 버튼으로만 닫을 수 있어 불편).
+ *  누르기 시작과 끝이 모두 창 밖일 때만 (창 안에서 글자를 끌어 선택하다 밖에서 놓은 경우는 닫지 않음) */
+function closeOnBackdrop(dialog: HTMLDialogElement): void {
+  const outside = (e: MouseEvent) => {
+    const r = dialog.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+  let startedOutside = false;
+  dialog.addEventListener('pointerdown', (e) => (startedOutside = e.target === dialog && outside(e)));
+  dialog.addEventListener('click', (e) => {
+    if (startedOutside && e.target === dialog && outside(e)) dialog.close();
+    startedOutside = false;
+  });
 }
 
 function setupMoreMenu(): void {
@@ -264,14 +280,28 @@ function caretMove(dir: 'left' | 'right' | 'up' | 'down'): void {
   box.setSelectionRange(next, next);
 }
 
+/** 앱(Android)이 알려 준 하단 내비게이션 막대 높이 (웹은 0, 대신 CSS safe-area) */
+let navInsetBottom = 0;
+let tallestViewport = window.innerHeight;
+/**
+ * 화면 아래에서 비울 높이(--safe-bottom): 화면 키보드가 보이는 영역을 가리는 만큼(visualViewport)
+ * + 키보드가 내려가 있으면 내비게이션 막대 높이. 키보드가 올라와 있으면 막대는 키보드 뒤라 더하지 않음
+ */
+function placeBottom(): void {
+  const vv = window.visualViewport;
+  tallestViewport = Math.max(tallestViewport, window.innerHeight);
+  const covered = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  const keyboardUp = covered > 120 || window.innerHeight < tallestViewport - 120;
+  const bottom = covered + (keyboardUp ? 0 : navInsetBottom);
+  document.documentElement.style.setProperty('--safe-bottom', `${bottom}px`);
+  const bar = document.getElementById('key-bar');
+  if (bar && !bar.hidden) document.documentElement.style.setProperty('--kb-bar-h', `${bar.offsetHeight}px`);
+}
+
 function setupKeyBar(): void {
   const bar = $('key-bar');
   const vv = window.visualViewport;
-  const place = () => {
-    // 화면 키보드가 올라오면 보이는 영역(visualViewport)의 맨 아래에 붙임
-    const bottom = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-    document.documentElement.style.setProperty('--kb-bottom', `${bottom}px`);
-  };
+  const place = placeBottom;
   const update = () => {
     const active = document.activeElement;
     const editing = isSmallScreen() && (active === editor() || active === $('title'));
@@ -279,12 +309,13 @@ function setupKeyBar(): void {
     document.body.classList.toggle('kb-open', editing);
     place();
   };
-  for (const el of [editor(), $('title')]) {
-    el.addEventListener('focus', update);
-    el.addEventListener('blur', () => setTimeout(update, 0)); // 막대 버튼으로 옮겨 가는 순간은 제외
-  }
+  // 문서 전체의 포커스 변화로 판단 (본문·제목 어느 쪽이든, 막대 버튼으로 옮겨 가는 순간은 다음 틱에)
+  document.addEventListener('focusin', update);
+  document.addEventListener('focusout', () => setTimeout(update, 0));
   vv?.addEventListener('resize', place);
   vv?.addEventListener('scroll', place);
+  window.addEventListener('resize', place);
+  place();
   // 버튼을 눌러도 본문 포커스(=화면 키보드)를 잃지 않게
   bar.addEventListener('pointerdown', (e) => e.preventDefault());
   bar.addEventListener('click', (e) => {
@@ -961,6 +992,11 @@ async function setupDevice(): Promise<void> {
   void tauri.appApi.topInset().then((px) => {
     if (px > 0) document.documentElement.style.setProperty('--inset-top', `${Math.round(px)}px`);
   });
+  // 하단 내비게이션 막대 높이 (키보드가 내려갔을 때 아래 메뉴가 가려지지 않게, 2026-11-14 사용 의견)
+  void tauri.appApi.bottomInset().then((px) => {
+    navInsetBottom = Math.max(0, Math.round(px));
+    placeBottom();
+  });
   const { createDevicePanel } = await import('../account/device-panel');
   setTransport(tauri.deviceTransport(onDeviceUnauthorized));
   device.api = tauri.deviceApi;
@@ -972,6 +1008,8 @@ async function setupDevice(): Promise<void> {
     revoked: () => device.revoked,
     appVersion: async () => buildLabel(await tauri.appApi.info()),
     checkUpdate: checkAppUpdate,
+    updateAvailable: () => !!appUpdate.state?.file,
+    installUpdate: () => installAppUpdate(),
   });
   $('update-btn').onclick = () => void installAppUpdate();
   device.panel = panel;
@@ -2160,6 +2198,7 @@ function bindEvents(): void {
   };
   setupMoreMenu();
   setupKeyBar();
+  for (const id of ['account-dialog', 'trash-dialog', 'help-dialog']) closeOnBackdrop($<HTMLDialogElement>(id));
   $('jump-top').onclick = () => jumpTo(0);
   $('jump-last').onclick = jumpToLastEdit;
   window.matchMedia(SETTINGS.smallScreenQuery).addEventListener('change', renderModeButtons);
