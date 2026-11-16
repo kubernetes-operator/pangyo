@@ -4,6 +4,7 @@
 // 앱 밖에서 지워진 메모(바깥 삭제)는 여기서 '서버에서도 삭제' 또는 '다시 받기'를 고릅니다.
 import type { Locale } from '../settings';
 import { DeviceError, deviceApi, type DeviceInfo, type ExternalDeletion } from '../storage/tauri';
+import { offlineHint } from './offline-reason';
 
 // === 0. 문구 (ko/en) ===
 const TEXT: Record<Locale, Record<string, string>> = {
@@ -90,6 +91,8 @@ export interface DeviceHooks {
   onUnpaired: () => boolean | void | Promise<boolean | void>;
   /** 상단과 같은 동기화 상태 문구 */
   statusText: () => string;
+  /** 서버 연결이 안 될 때 원인 안내 (없으면 '') */
+  statusDetail?: () => string;
   /** 바깥 삭제 처리. 결과 코드(deleted, gone, changed, busy, restored, missing, offline, notSynced)를 돌려줌 */
   resolveDeletion: (item: ExternalDeletion, choice: DeletionChoice) => Promise<string>;
   /** 서버가 이 장비를 거부(401)했는지 */
@@ -212,8 +215,13 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
         await renderPaired(info);
       } catch (e) {
         const err = e instanceof DeviceError ? e : new DeviceError('error', String(e));
+        // 연결 실패는 원인(인증서·프록시·DNS 등)도 함께 (2026-11-16 사용 의견)
         status.textContent =
-          err.code === 'offline' ? t('offline') : err.code === 'secure_storage' ? `${t('secure')} — ${err.message}` : err.message;
+          err.code === 'offline'
+            ? [t('offline'), offlineHint(err.message, getLocale())].filter(Boolean).join(' ')
+            : err.code === 'secure_storage'
+              ? `${t('secure')} — ${err.message}`
+              : err.message;
         submit.disabled = false;
         submit.textContent = t('pair');
       }
@@ -269,6 +277,7 @@ export function createDevicePanel(dialog: HTMLDialogElement, getLocale: () => Lo
       ),
       ...(hooks.checkUpdate ? [el('div', { className: 'toolbar' }, updateBtn, installBtn, updateResult)] : []),
       message(hooks.statusText()),
+      ...(hooks.statusDetail?.() ? [message(hooks.statusDetail(), 'error')] : []),
       el('h3', {}, t('deletions')),
       message(t('deletionsHelp')),
       deletions,

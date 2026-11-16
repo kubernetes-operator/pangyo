@@ -43,6 +43,13 @@ sha2 = "0.10"
 # 모바일은 앱 전용 폴더 (remote.rs). Android Keystore 연동은 후속.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+# 서버 연결 인증서 (net.rs): 내장 루트 목록 + OS 인증서 저장소 루트 (회사 보안 장비의 HTTPS 검사 환경)
+webpki-root-certs = "1"
+rustls-native-certs = "0.8"
+
+# Windows 인터넷 옵션의 프록시 설정 읽기 (net.rs, ureq가 쓰는 것과 같은 버전)
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
 
 # 진단용(리눅스): MEMONEST_WEBVIEW_CONSOLE=1 이면 웹뷰 콘솔 메시지를 표준 출력으로 보냅니다.
 [target.'cfg(target_os = "linux")'.dependencies]
