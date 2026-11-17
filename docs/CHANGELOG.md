@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Unreleased — 공통 웹 디자인 운영 반영 (2026-11-17)
+- 사용자 승인으로 웹 서비스만 Helm revision 25에 반영. 기존 운영 서버 바이너리와 JavaScript는 보존하고 HTML/CSS·서비스워커 캐시 상수만 교체.
+- 실제 HTTPS Light/모바일 Dark 확인, 별도 로컬 릴리스 검사에서 오프라인 테마·저장 보존·Markdown 다운로드 통과. DB/PVC/계정/설치 파일은 변경하지 않음.
+- 운영 주소·이미지 digest·이전 revision은 공통 web-standard의 docs/deployment.md, docs/production-release.json에 기록. 실기기 검증은 별도.
+
 ## Unreleased — 공통 웹 디자인 v0.2.0 (2026-11-17)
 - 변경 파일: `apps/web/index.html`, `apps/web/src/main.ts`, `apps/web/src/ui/web-standard.css`(신규), `docs/CHANGELOG.md`.
 - 변경: 공통 CSS를 앱 빌드에 포함하고 HTML 루트에서 시스템 Light/Dark 토큰 적용. 웹·Tauri가 사용하는 HTML/CSS 표현만 변경.
