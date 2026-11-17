@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## Unreleased — 공통 웹 디자인 v0.2.0 (2026-11-17)
+- 변경 파일: `apps/web/index.html`, `apps/web/src/main.ts`, `apps/web/src/ui/web-standard.css`(신규), `docs/CHANGELOG.md`.
+- 변경: 공통 CSS를 앱 빌드에 포함하고 HTML 루트에서 시스템 Light/Dark 토큰 적용. 웹·Tauri가 사용하는 HTML/CSS 표현만 변경.
+- 보존: 편집기 높이·모바일 safe-area/키보드·화면 전환, IndexedDB/파일 저장 형식, API/인증/동기화/임대/Rust 코드는 유지.
+- 검증: `make check` 통과(웹 단위 113개, E2E 34개 및 Rust/기존 guard), Chromium Light/Dark/375px, 모바일 Dark 저장·새로고침·Markdown 다운로드 확인. 기존 오프라인 회귀 통과.
+- 위험/후속: 공유 웹 UI이므로 Tauri 표시도 변경될 수 있음. 네이티브 패키지 실행과 모바일 실기기는 미검증. 운영 배포하지 않음. 공통 소스는 `/ai/web-standard`에서 빌드하며 앱은 생성 CSS 사본으로 독립 빌드 가능.
+
 ## v0.1.0 — initial scaffold
 - 요구사항 29개 추적표, ADR, 플랫폼·저장소·API 설계 문서 작성.
 - 오프라인 브라우저 메모 프로토타입, Go 헬스체크 API, Helm·Tauri·FreeBSD 골격.

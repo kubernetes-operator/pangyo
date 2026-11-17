@@ -1,5 +1,6 @@
 // === 진입점: 스타일, 앱 부팅, 오프라인 서비스워커 등록 ===
 import './ui/main.css';
+import './ui/web-standard.css';
 import { bootstrap, reportStorageFailure } from './ui/app';
 import { isTauri, openRepository } from './storage';
 
