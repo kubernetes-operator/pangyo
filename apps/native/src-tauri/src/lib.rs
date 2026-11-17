@@ -17,6 +17,7 @@ const WEBVIEW_CONSOLE_ENV: &str = "MEMONEST_WEBVIEW_CONSOLE";
 #[cfg(feature = "e2e")]
 const E2E_SCRIPT_ENV: &str = "MEMONEST_E2E_SCRIPT";
 
+mod net;
 mod platform;
 mod remote;
 
@@ -228,9 +229,9 @@ async fn install_update(
         use sha2::{Digest, Sha256};
         const MAX_BYTES: u64 = 300 * 1024 * 1024;
         let data = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-            let mut response = ureq::get(&url)
-                .call()
-                .map_err(|e| format!("offline: {e}"))?;
+            // 서버 요청과 같은 프록시·인증서 설정 (net.rs)
+            let agent: ureq::Agent = net::config_builder().build().into();
+            let mut response = agent.get(&url).call().map_err(|e| net::offline_error(&e))?;
             response
                 .body_mut()
                 .with_config()

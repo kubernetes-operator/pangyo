@@ -11,6 +11,7 @@ import type { DeviceInfo, ExternalDeletion } from '../storage/tauri';
 import { SyncEngine, type ConflictChoice, type LeaseState, type SyncStatus, type SyncStore } from '../sync/engine';
 import { deviceLabel, newClientId, syncApi } from '../sync/api';
 import { renderSyncBanner, syncStatusText } from './sync-view';
+import { offlineHint } from '../account/offline-reason';
 import { parseFolder, folderAncestors, safeFilename, FolderError } from '../domain/paths';
 import { askConfirm, askMove, askName, type MoveTarget } from './name-dialog';
 import { depthOf, folderMoveProblem, isWithin, joinPath, lastSegment, parentOf, remap } from '../domain/tree-ops';
@@ -604,10 +605,17 @@ function setReadOnly(locked: boolean): void {
   document.body.classList.toggle('note-locked', locked);
 }
 
+/** 서버 연결이 안 될 때 원인 안내 (앱이 보낸 'offline: <원인> | …'). 없으면 '' */
+function offlineDetail(): string {
+  const status = state.syncStatus;
+  return status?.phase === 'offline' ? offlineHint(status.message ?? '', state.locale) : '';
+}
+
 function renderSyncInfo(): void {
   $('sync-status').textContent = state.sync || state.syncBlocked || device.revoked
     ? syncStatusText(state.syncStatus, state.locale, state.syncBlocked, device.deletions.length, device.revoked)
     : '';
+  $('sync-status').title = offlineDetail(); // 오프라인 원인 (앱: 인증서·프록시 등)
   renderSyncBanner($('sync-banner'), {
     note: state.note,
     lease: state.lease,
@@ -950,8 +958,9 @@ async function checkAppUpdate(): Promise<string> {
   if (!device.info) return ko ? '장비를 연결하면 업데이트를 확인할 수 있습니다.' : 'Link this device to check for updates.';
   try {
     appUpdate.state = pickUpdate(info, await downloadApi.list());
-  } catch {
-    return ko ? '서버에 연결할 수 없어 확인하지 못했습니다.' : 'Could not reach the server.';
+  } catch (e) {
+    const base = ko ? '서버에 연결할 수 없어 확인하지 못했습니다.' : 'Could not reach the server.';
+    return [base, offlineHint(e instanceof Error ? e.message : String(e), state.locale)].filter(Boolean).join(' ');
   }
   $('update-btn').hidden = !appUpdate.state.file;
   if (appUpdate.state.file) return WORDS[state.locale].updateAvailable + ` (${appUpdate.state.publishedBuild?.slice(0, 7)})`;
@@ -983,7 +992,8 @@ async function installAppUpdate(): Promise<void> {
     $('project-status').textContent = w.updateOpened;
   } catch (e) {
     console.error(e);
-    $('project-status').textContent = w.updateFailed;
+    // 받기 실패는 원인(인증서·프록시 등)도 함께
+    $('project-status').textContent = [w.updateFailed, offlineHint(String(e), state.locale)].filter(Boolean).join(' ');
   }
 }
 
@@ -1018,6 +1028,7 @@ async function setupDevice(): Promise<void> {
     onPaired: (info) => startDeviceSync(info),
     onUnpaired: () => unlinkDevice(),
     statusText: () => syncStatusText(state.syncStatus, state.locale, state.syncBlocked, device.deletions.length, device.revoked),
+    statusDetail: offlineDetail,
     resolveDeletion,
     revoked: () => device.revoked,
     appVersion: async () => buildLabel(await tauri.appApi.info()),

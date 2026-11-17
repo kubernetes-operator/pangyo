@@ -74,10 +74,10 @@ pub struct Remote {
 
 impl Remote {
     pub fn new(data_dir: PathBuf) -> Self {
-        let config = ureq::Agent::config_builder()
+        // 프록시·인증서·사용자 에이전트는 net.rs 공통 설정
+        let config = crate::net::config_builder()
             .timeout_global(Some(REQUEST_TIMEOUT))
             .http_status_as_error(false) // 4xx/5xx도 본문(error 코드)을 화면에 전달
-            .user_agent(concat!("MemoNest/", env!("CARGO_PKG_VERSION")))
             .build();
         Self {
             data_dir,
@@ -208,7 +208,8 @@ impl Remote {
             }
             _ => return Err(format!("지원하지 않는 요청: {method}")),
         };
-        let mut response = result.map_err(|e| format!("{OFFLINE_PREFIX} {e}"))?;
+        // 연결 실패: 원인(dns·tls·proxy 등)을 붙여 화면에 전달 (net.rs)
+        let mut response = result.map_err(|e| crate::net::offline_error(&e))?;
         let status = response.status().as_u16();
         let is_json = response
             .headers()
@@ -223,7 +224,7 @@ impl Remote {
                 .with_config()
                 .limit(MAX_RESPONSE_BYTES)
                 .read_to_string()
-                .map_err(|e| format!("{OFFLINE_PREFIX} {e}"))?;
+                .map_err(|e| crate::net::offline_error(&e))?;
             serde_json::from_str(&text).ok()
         };
         Ok(ServerResponse { status, body })

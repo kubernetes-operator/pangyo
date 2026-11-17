@@ -227,7 +227,8 @@ export class SyncEngine {
       this.report('idle');
     } catch (e) {
       const err = asSyncError(e);
-      this.report(err.offline ? 'offline' : 'error', err.offline ? undefined : err.message);
+      // 오프라인도 원인 문구를 남김 (앱: 'offline: tls | …' → 화면이 안내, account/offline-reason.ts)
+      this.report(err.offline ? 'offline' : 'error', err.message);
     }
   }
 

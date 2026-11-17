@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## Unreleased — 공통 웹 디자인 운영 반영 (2026-11-17)
+- 사용자 승인으로 웹 서비스만 Helm revision 25에 반영. 기존 운영 서버 바이너리와 JavaScript는 보존하고 HTML/CSS·서비스워커 캐시 상수만 교체.
+- 실제 HTTPS Light/모바일 Dark 확인, 별도 로컬 릴리스 검사에서 오프라인 테마·저장 보존·Markdown 다운로드 통과. DB/PVC/계정/설치 파일은 변경하지 않음.
+- 운영 주소·이미지 digest·이전 revision은 공통 web-standard의 docs/deployment.md, docs/production-release.json에 기록. 실기기 검증은 별도.
+
+## Unreleased — 공통 웹 디자인 v0.2.0 (2026-11-17)
+- 변경 파일: `apps/web/index.html`, `apps/web/src/main.ts`, `apps/web/src/ui/web-standard.css`(신규), `docs/CHANGELOG.md`.
+- 변경: 공통 CSS를 앱 빌드에 포함하고 HTML 루트에서 시스템 Light/Dark 토큰 적용. 웹·Tauri가 사용하는 HTML/CSS 표현만 변경.
+- 보존: 편집기 높이·모바일 safe-area/키보드·화면 전환, IndexedDB/파일 저장 형식, API/인증/동기화/임대/Rust 코드는 유지.
+- 검증: `make check` 통과(웹 단위 113개, E2E 34개 및 Rust/기존 guard), Chromium Light/Dark/375px, 모바일 Dark 저장·새로고침·Markdown 다운로드 확인. 기존 오프라인 회귀 통과.
+- 위험/후속: 공유 웹 UI이므로 Tauri 표시도 변경될 수 있음. 네이티브 패키지 실행과 모바일 실기기는 미검증. 운영 배포하지 않음. 공통 소스는 `/ai/web-standard`에서 빌드하며 앱은 생성 CSS 사본으로 독립 빌드 가능.
+
 ## v0.1.0 — initial scaffold
 - 요구사항 29개 추적표, ADR, 플랫폼·저장소·API 설계 문서 작성.
 - 오프라인 브라우저 메모 프로토타입, Go 헬스체크 API, Helm·Tauri·FreeBSD 골격.
@@ -328,3 +340,8 @@
 - 수정: 앱이 자기 설치 위치로 방식을 판단(`install_kind`)해 **같은 방식의 파일**로 업데이트(msi: `msiexec /i … /passive` — 관리자 확인 창 1회, exe: `/S`). 한 줄 명령 대신 임시 **배치 파일**(UTF-8, 한글 사용자 폴더 대비)로 실행해 설치가 끝날 때까지 확실히 기다린 뒤 다시 실행. 설치 종료 코드를 기록해 다음 실행 때 결과(성공/실패 코드)를 화면에 표시(`last_update_result`). 장비 연결 창의 앱 버전에 설치 방식(.msi/.exe) 표시.
 - 테스트: Tauri 단위 3개(설치 방식 판단·배치 내용·UTF-8), Vitest 109(파일 선택·종료 코드), `make check`. 실제 Windows 설치는 실기기 확인 필요.
 
+## Unreleased — 앱 서버 연결: 회사망 프록시·인증서·실패 원인 (2026-11-16, `feature/app-network`)
+- 확인 내역: 새 Windows 서버에서 **웹 로그인은 되는데 앱 장비 등록은 "서버에 연결할 수 없습니다"**. 서버 로그에 웹의 등록 코드 발급은 있고 앱의 등록 요청은 없음 → 그 PC에서 나가는 연결 문제. 직접 443 연결(`Test-NetConnection`)은 됨.
+- 원인 후보: 앱(ureq + rustls)은 브라우저와 달리 Windows 프록시 설정과 Windows 인증서 저장소(회사 보안 장비의 HTTPS 검사 인증서)를 쓰지 않음. 화면은 원인 문구를 숨김.
+- 수정 (ADR-0004 보완): ① 연결 실패 원인(주소·시간 초과·인증서·프록시·거부·네트워크)과 상세를 장비 등록 창·장비 창·업데이트 문구·상단 상태(마우스 올림)에 표시 ② Windows 인터넷 옵션의 프록시 사용(환경 변수 우선, PAC 미지원) ③ 데스크톱은 내장 루트 목록 + OS 인증서 저장소 루트를 함께 신뢰. 앱 안 업데이트 받기도 같은 설정 사용.
+- 테스트: Tauri 단위 5개(프록시 값 형식·예외 목록·원인 분류·루트 목록), Vitest(원인 해석·안내 문구), 로컬 실연결 확인(시험 CA HTTPS 서버 + CONNECT 프록시: 기존 `tls` 실패 → 새 설정 200, 실제 도메인 200), `make check`, `make desktop-sync-check`. Windows 프록시·인증서 저장소는 실기기 확인 필요.
