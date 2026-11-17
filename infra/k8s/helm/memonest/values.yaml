@@ -60,7 +60,7 @@ downloads:
 # DB 백업: 매일 pg_dump → 백업 PVC, 매번 임시 Postgres에 실제 복원해 검증 (운영 DB는 읽기만)
 backup:
   enabled: true
-  schedule: "0 3 * * *" # 매일 03:00
+  schedule: "30 2 * * *" # 매일 02:30 — 클러스터 Velero 일일 백업(03:00) 전에 덤프를 끝내 완성된 파일이 백업되게
   timeZone: Asia/Seoul
   retentionDays: 14 # 이보다 오래된 백업 삭제 (최신 1개는 항상 보관)
   storage: 1Gi
@@ -68,6 +68,13 @@ backup:
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {cpu: 500m, memory: 512Mi}
+  # 클러스터 백업(Velero) 연동. Velero 파일 백업은 "실행 중인 파드에 마운트된 볼륨"만 백업한다.
+  # 백업 폴더는 CronJob 이 돌 때만 마운트되므로, 읽기 전용으로 붙잡고 있는 아주 작은 파드를 둔다.
+  veleroHolder:
+    enabled: true
+    resources:
+      requests: {cpu: 1m, memory: 8Mi}
+      limits: {cpu: 20m, memory: 32Mi}
 
 # 외부 접속 (Gateway API). 기존 앱들과 같은 방식: 공용 Gateway의 http/https 리스너에 연결
 httpRoute:
